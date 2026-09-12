@@ -29,6 +29,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          cache-dependency-glob: "apps/api/uv.lock"
 
       - name: Set up Python
         run: uv python install 3.11
@@ -67,7 +68,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
