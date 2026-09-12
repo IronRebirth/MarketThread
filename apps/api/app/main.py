@@ -4,9 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="MarketThread API",
     version="0.1.0",
-    description=(
-        "Backend API for the MarketThread financial intelligence platform."
-    ),
+    description=("Backend API for the MarketThread financial intelligence platform."),
 )
 
 app.add_middleware(
