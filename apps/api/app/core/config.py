@@ -3,7 +3,6 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
@@ -18,8 +17,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     database_url: str = (
-        "postgresql+psycopg://marketthread:change-me"
-        "@localhost:5432/marketthread"
+        "postgresql+psycopg://marketthread:change-me@localhost:5432/marketthread"
     )
 
     redis_url: str = "redis://localhost:6379/0"
