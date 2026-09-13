@@ -1,14 +1,21 @@
+from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
 from app.evaluation.models import (
     EvaluationByHorizonSummary,
+    EvaluationByStateSummary,
     EvaluationDirection,
     EvaluationHorizonSummary,
+    EvaluationRecommendationState,
+    EvaluationSignalStrength,
+    EvaluationStateSummary,
     EvaluationSummary,
     EvaluationWindow,
     SignalEvaluation,
 )
+
+StateGetter = Callable[[SignalEvaluation], str]
 
 
 class SignalEvaluationAnalyzer:
@@ -22,6 +29,8 @@ class SignalEvaluationAnalyzer:
         window: EvaluationWindow,
         signal_direction: EvaluationDirection,
         observed_direction: EvaluationDirection,
+        signal_strength: EvaluationSignalStrength,
+        recommendation_state: EvaluationRecommendationState,
         signal_confidence: float,
         forward_return_pct: float | None,
         benchmark_return_pct: float | None,
@@ -40,8 +49,6 @@ class SignalEvaluationAnalyzer:
         )
 
         notes = self._build_notes(
-            signal_direction=signal_direction,
-            observed_direction=observed_direction,
             direction_correct=direction_correct,
         )
 
@@ -52,6 +59,8 @@ class SignalEvaluationAnalyzer:
             window=window,
             signal_direction=signal_direction,
             observed_direction=observed_direction,
+            signal_strength=signal_strength,
+            recommendation_state=recommendation_state,
             signal_confidence=signal_confidence,
             forward_return_pct=forward_return_pct,
             benchmark_return_pct=benchmark_return_pct,
@@ -66,6 +75,75 @@ class SignalEvaluationAnalyzer:
         evaluations: tuple[SignalEvaluation, ...],
     ) -> EvaluationSummary:
         """Aggregate historical signal evaluation results."""
+
+        return self._build_summary(evaluations)
+
+    def summarize_by_horizon(
+        self,
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationByHorizonSummary:
+        """Aggregate historical evaluation results separately by horizon."""
+
+        summaries = tuple(
+            self._summarize_horizon(evaluations, window) for window in EvaluationWindow
+        )
+
+        return EvaluationByHorizonSummary(
+            summaries=summaries,
+            notes=self._build_horizon_summary_notes(evaluations),
+        )
+
+    def summarize_by_signal_strength(
+        self,
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationByStateSummary:
+        """Aggregate historical results by recorded signal strength."""
+
+        summaries = tuple(
+            self._summarize_state(
+                evaluations=evaluations,
+                state=strength,
+                state_getter=lambda evaluation: evaluation.signal_strength,
+            )
+            for strength in EvaluationSignalStrength
+        )
+
+        return EvaluationByStateSummary(
+            summaries=summaries,
+            notes=self._build_state_summary_notes(
+                evaluations=evaluations,
+                grouping="signal strength",
+            ),
+        )
+
+    def summarize_by_recommendation_state(
+        self,
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationByStateSummary:
+        """Aggregate historical results by recorded recommendation state."""
+
+        summaries = tuple(
+            self._summarize_state(
+                evaluations=evaluations,
+                state=state,
+                state_getter=lambda evaluation: evaluation.recommendation_state,
+            )
+            for state in EvaluationRecommendationState
+        )
+
+        return EvaluationByStateSummary(
+            summaries=summaries,
+            notes=self._build_state_summary_notes(
+                evaluations=evaluations,
+                grouping="recommendation state",
+            ),
+        )
+
+    @staticmethod
+    def _build_summary(
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationSummary:
+        """Build an aggregate evaluation summary."""
 
         evaluated_directions = [
             evaluation.direction_correct
@@ -98,15 +176,19 @@ class SignalEvaluationAnalyzer:
                 evaluated_directions,
             )
 
-        average_forward_return_pct = self._average(returns)
-        average_relative_return_pct = self._average(relative_returns)
+        average_forward_return_pct = SignalEvaluationAnalyzer._average(
+            returns,
+        )
+        average_relative_return_pct = SignalEvaluationAnalyzer._average(
+            relative_returns,
+        )
 
         positive_outcome_rate = None
 
         if evaluations:
             positive_outcome_rate = len(positive_outcomes) / len(evaluations)
 
-        notes = self._build_summary_notes(
+        notes = SignalEvaluationAnalyzer._build_summary_notes(
             evaluations=evaluations,
             directional_accuracy=directional_accuracy,
         )
@@ -120,23 +202,6 @@ class SignalEvaluationAnalyzer:
             notes=notes,
         )
 
-    def summarize_by_horizon(
-        self,
-        evaluations: tuple[SignalEvaluation, ...],
-    ) -> EvaluationByHorizonSummary:
-        """Aggregate historical evaluation results separately by horizon."""
-
-        summaries = tuple(
-            self._summarize_horizon(evaluations, window) for window in EvaluationWindow
-        )
-
-        return EvaluationByHorizonSummary(
-            summaries=summaries,
-            notes=self._build_horizon_summary_notes(
-                evaluations=evaluations,
-            ),
-        )
-
     @staticmethod
     def _summarize_horizon(
         evaluations: tuple[SignalEvaluation, ...],
@@ -148,54 +213,44 @@ class SignalEvaluationAnalyzer:
             evaluation for evaluation in evaluations if evaluation.window == window
         )
 
-        evaluated_directions = [
-            evaluation.direction_correct
-            for evaluation in window_evaluations
-            if evaluation.direction_correct is not None
-        ]
-
-        returns = [
-            evaluation.forward_return_pct
-            for evaluation in window_evaluations
-            if evaluation.forward_return_pct is not None
-        ]
-
-        relative_returns = [
-            evaluation.relative_return_pct
-            for evaluation in window_evaluations
-            if evaluation.relative_return_pct is not None
-        ]
-
-        positive_outcomes = sum(
-            evaluation.observed_direction == EvaluationDirection.POSITIVE
-            for evaluation in window_evaluations
+        summary = SignalEvaluationAnalyzer._build_summary(
+            window_evaluations,
         )
-
-        directional_accuracy = None
-
-        if evaluated_directions:
-            directional_accuracy = sum(evaluated_directions) / len(
-                evaluated_directions,
-            )
-
-        positive_outcome_rate = None
-
-        if window_evaluations:
-            positive_outcome_rate = positive_outcomes / len(
-                window_evaluations,
-            )
 
         return EvaluationHorizonSummary(
             window=window,
-            evaluation_count=len(window_evaluations),
-            directional_accuracy=directional_accuracy,
-            average_forward_return_pct=SignalEvaluationAnalyzer._average(
-                returns,
-            ),
-            average_relative_return_pct=SignalEvaluationAnalyzer._average(
-                relative_returns,
-            ),
-            positive_outcome_rate=positive_outcome_rate,
+            evaluation_count=summary.evaluation_count,
+            directional_accuracy=summary.directional_accuracy,
+            average_forward_return_pct=summary.average_forward_return_pct,
+            average_relative_return_pct=summary.average_relative_return_pct,
+            positive_outcome_rate=summary.positive_outcome_rate,
+        )
+
+    @staticmethod
+    def _summarize_state(
+        evaluations: tuple[SignalEvaluation, ...],
+        state: str,
+        state_getter: StateGetter,
+    ) -> EvaluationStateSummary:
+        """Summarize evaluations for a specific recorded state."""
+
+        state_evaluations = tuple(
+            evaluation
+            for evaluation in evaluations
+            if state_getter(evaluation) == state
+        )
+
+        summary = SignalEvaluationAnalyzer._build_summary(
+            state_evaluations,
+        )
+
+        return EvaluationStateSummary(
+            state=state,
+            evaluation_count=summary.evaluation_count,
+            directional_accuracy=summary.directional_accuracy,
+            average_forward_return_pct=summary.average_forward_return_pct,
+            average_relative_return_pct=summary.average_relative_return_pct,
+            positive_outcome_rate=summary.positive_outcome_rate,
         )
 
     @staticmethod
@@ -226,8 +281,6 @@ class SignalEvaluationAnalyzer:
 
     @staticmethod
     def _build_notes(
-        signal_direction: EvaluationDirection,
-        observed_direction: EvaluationDirection,
         direction_correct: bool | None,
     ) -> tuple[str, ...]:
         """Create notes describing the individual evaluation."""
@@ -301,6 +354,24 @@ class SignalEvaluationAnalyzer:
             ),
             (
                 "Horizon comparisons describe observed outcomes and do not "
+                "establish causation."
+            ),
+        )
+
+    @staticmethod
+    def _build_state_summary_notes(
+        evaluations: tuple[SignalEvaluation, ...],
+        grouping: str,
+    ) -> tuple[str, ...]:
+        """Create notes for state-level evaluation results."""
+
+        if not evaluations:
+            return (f"No historical signal evaluations are available by {grouping}.",)
+
+        return (
+            (f"{len(evaluations)} historical evaluations were grouped by {grouping}."),
+            (
+                "State comparisons describe observed outcomes and do not "
                 "establish causation."
             ),
         )
