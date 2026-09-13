@@ -1,9 +1,18 @@
-from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from app.backtesting.analyzer import TimeAwareBacktestAnalyzer
-from app.backtesting.models import (
+from pydantic import BaseModel, Field
+
+from app.evaluation.models import (
+    EvaluationDirection,
+    EvaluationRecommendationState,
+    EvaluationSignalStrength,
+)
+
+from .analyzer import TimeAwareBacktestAnalyzer
+from .models import (
+    BacktestExecutionResult,
+    BacktestFoldResult,
     BacktestStatus,
     TimeAwareEvaluation,
     TimeAwareObservation,
@@ -11,64 +20,124 @@ from app.backtesting.models import (
 )
 
 
-@dataclass(frozen=True)
-class BacktestSignal:
-    """Historical signal available for backtest execution."""
-
+class BacktestSignal(BaseModel):
     signal_id: UUID
     event_id: UUID
     instrument_id: UUID
     created_at: datetime
-
-
-@dataclass(frozen=True)
-class BacktestFoldResult:
-    """Evaluation results produced for one walk-forward fold."""
-
-    fold_number: int
-    evaluations: tuple[TimeAwareEvaluation, ...]
-    valid: bool
-    notes: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class BacktestExecutionResult:
-    """Complete execution result for a walk-forward backtest."""
-
-    backtest_id: UUID
-    fold_results: tuple[BacktestFoldResult, ...]
-    valid: bool
-    evaluation_count: int
-    valid_evaluation_count: int
-    rejected_evaluation_count: int
-    notes: tuple[str, ...] = ()
+    direction: EvaluationDirection = EvaluationDirection.UNAVAILABLE
+    signal_strength: EvaluationSignalStrength = EvaluationSignalStrength.STRONG
+    recommendation_state: EvaluationRecommendationState = (
+        EvaluationRecommendationState.CONSIDER
+    )
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class BacktestExecutionEngine:
-    """Execute historical signal evaluations across walk-forward folds."""
-
-    def __init__(self) -> None:
-        self._analyzer = TimeAwareBacktestAnalyzer()
+    def __init__(
+        self,
+        analyzer: TimeAwareBacktestAnalyzer | None = None,
+    ) -> None:
+        self.analyzer = analyzer or TimeAwareBacktestAnalyzer()
 
     def execute(
         self,
-        folds: tuple[WalkForwardFold, ...],
-        signals: tuple[BacktestSignal, ...],
-        observations: tuple[TimeAwareObservation, ...],
+        *,
+        folds: tuple[WalkForwardFold, ...] | list[WalkForwardFold],
+        signals: tuple[BacktestSignal, ...] | list[BacktestSignal],
+        observations: tuple[TimeAwareObservation, ...] | list[TimeAwareObservation],
         backtest_id: UUID | None = None,
     ) -> BacktestExecutionResult:
-        """Execute signals against the first eligible forward observation."""
+        resolved_backtest_id = backtest_id or uuid4()
+        folds = tuple(folds)
+        signals = tuple(signals)
+        observations = tuple(observations)
 
-        execution_id = backtest_id or uuid4()
-
-        fold_results = tuple(
-            self._execute_fold(
-                fold=fold,
-                signals=signals,
-                observations=observations,
-            )
-            for fold in folds
+        invalid_fold_numbers = tuple(
+            fold.fold_number for fold in folds if not fold.is_temporally_valid()
         )
+
+        chronology_is_valid = True
+
+        for index in range(1, len(folds)):
+            previous = folds[index - 1]
+            current = folds[index]
+
+            if current.evaluation_period.start_at < previous.evaluation_period.start_at:
+                chronology_is_valid = False
+                break
+
+        fold_results: list[BacktestFoldResult] = []
+
+        for fold in folds:
+            fold_is_valid = fold.is_temporally_valid()
+
+            fold_evaluations: list[TimeAwareEvaluation] = []
+
+            if not fold_is_valid:
+                fold_results.append(
+                    BacktestFoldResult(
+                        fold_number=fold.fold_number,
+                        training_periods=fold.training_periods,
+                        evaluation_periods=fold.evaluation_periods,
+                        evaluations=(),
+                        valid=False,
+                    ),
+                )
+                continue
+
+            evaluation_start = fold.evaluation_period.start_at
+            evaluation_end = fold.evaluation_period.end_at
+
+            evaluation_signals = [
+                signal
+                for signal in signals
+                if evaluation_start <= signal.created_at < evaluation_end
+            ]
+
+            for signal in evaluation_signals:
+                eligible_observations = sorted(
+                    (
+                        observation
+                        for observation in observations
+                        if (
+                            observation.instrument_id == signal.instrument_id
+                            and observation.observed_at is not None
+                            and observation.observed_at > signal.created_at
+                        )
+                    ),
+                    key=lambda observation: (
+                        observation.observed_at or datetime.max.replace(tzinfo=UTC)
+                    ),
+                )
+
+                if not eligible_observations:
+                    continue
+
+                evaluation = self.analyzer.evaluate(
+                    signal_id=signal.signal_id,
+                    event_id=signal.event_id,
+                    instrument_id=signal.instrument_id,
+                    signal_created_at=signal.created_at,
+                    observation=eligible_observations[0],
+                    signal_direction=signal.direction,
+                    signal_strength=signal.signal_strength,
+                    recommendation_state=signal.recommendation_state,
+                    signal_confidence=signal.confidence,
+                )
+
+                if evaluation.status == BacktestStatus.VALID:
+                    fold_evaluations.append(evaluation)
+
+            fold_results.append(
+                BacktestFoldResult(
+                    fold_number=fold.fold_number,
+                    training_periods=fold.training_periods,
+                    evaluation_periods=fold.evaluation_periods,
+                    evaluations=tuple(fold_evaluations),
+                    valid=True,
+                ),
+            )
 
         all_evaluations = tuple(
             evaluation
@@ -76,145 +145,39 @@ class BacktestExecutionEngine:
             for evaluation in fold_result.evaluations
         )
 
-        valid = bool(folds) and all(fold_result.valid for fold_result in fold_results)
+        valid_count = len(all_evaluations)
 
-        valid_evaluation_count = sum(
-            evaluation.status == BacktestStatus.VALID for evaluation in all_evaluations
+        valid = bool(folds) and not invalid_fold_numbers and chronology_is_valid
+
+        if not folds:
+            valid = False
+
+        notes: tuple[str, ...] = (
+            "Only observations strictly after signal creation are eligible.",
+            "The earliest eligible observation is selected for each signal.",
         )
 
-        rejected_evaluation_count = sum(
-            evaluation.status == BacktestStatus.REJECTED
-            for evaluation in all_evaluations
-        )
+        if invalid_fold_numbers:
+            notes += ("One or more walk-forward folds failed temporal validation.",)
 
-        notes = self._build_notes(
-            folds=folds,
-            fold_results=fold_results,
-            evaluation_count=len(all_evaluations),
-        )
+        if not chronology_is_valid:
+            notes += ("Walk-forward fold ordering failed temporal validation.",)
 
         return BacktestExecutionResult(
-            backtest_id=execution_id,
-            fold_results=fold_results,
+            backtest_id=resolved_backtest_id,
+            fold_results=tuple(fold_results),
             valid=valid,
-            evaluation_count=len(all_evaluations),
-            valid_evaluation_count=valid_evaluation_count,
-            rejected_evaluation_count=rejected_evaluation_count,
+            evaluation_count=valid_count,
+            valid_evaluation_count=valid_count,
+            rejected_evaluation_count=0,
             notes=notes,
         )
 
-    def _execute_fold(
-        self,
-        fold: WalkForwardFold,
-        signals: tuple[BacktestSignal, ...],
-        observations: tuple[TimeAwareObservation, ...],
-    ) -> BacktestFoldResult:
-        """Execute evaluations for one walk-forward fold."""
 
-        if not fold.is_temporally_valid():
-            return BacktestFoldResult(
-                fold_number=fold.fold_number,
-                evaluations=(),
-                valid=False,
-                notes=(
-                    "Fold was rejected because its training and evaluation "
-                    "periods are not temporally valid.",
-                ),
-            )
-
-        fold_signals = tuple(
-            signal
-            for signal in signals
-            if self._is_signal_in_evaluation_period(
-                signal=signal,
-                fold=fold,
-            )
-        )
-
-        evaluations: list[TimeAwareEvaluation] = []
-
-        for signal in fold_signals:
-            observation = self._first_eligible_observation(
-                signal=signal,
-                observations=observations,
-            )
-
-            if observation is None:
-                continue
-
-            evaluations.append(
-                self._analyzer.evaluate(
-                    signal_id=signal.signal_id,
-                    event_id=signal.event_id,
-                    signal_created_at=signal.created_at,
-                    observation=observation,
-                ),
-            )
-
-        return BacktestFoldResult(
-            fold_number=fold.fold_number,
-            evaluations=tuple(evaluations),
-            valid=True,
-            notes=(
-                f"{len(evaluations)} signal observations were evaluated for this fold.",
-            ),
-        )
-
-    @staticmethod
-    def _is_signal_in_evaluation_period(
-        signal: BacktestSignal,
-        fold: WalkForwardFold,
-    ) -> bool:
-        """Return whether a signal belongs to the fold's evaluation period."""
-
-        return (
-            fold.evaluation_period.start_at
-            <= signal.created_at
-            < fold.evaluation_period.end_at
-        )
-
-    @staticmethod
-    def _first_eligible_observation(
-        signal: BacktestSignal,
-        observations: tuple[TimeAwareObservation, ...],
-    ) -> TimeAwareObservation | None:
-        """Return the earliest observation after a signal timestamp."""
-
-        eligible_observations = [
-            observation
-            for observation in observations
-            if (
-                observation.instrument_id == signal.instrument_id
-                and observation.observed_at > signal.created_at
-            )
-        ]
-
-        if not eligible_observations:
-            return None
-
-        return min(
-            eligible_observations,
-            key=lambda observation: observation.observed_at,
-        )
-
-    @staticmethod
-    def _build_notes(
-        folds: tuple[WalkForwardFold, ...],
-        fold_results: tuple[BacktestFoldResult, ...],
-        evaluation_count: int,
-    ) -> tuple[str, ...]:
-        """Build execution-level notes."""
-
-        if not folds:
-            return ("No walk-forward folds were supplied for execution.",)
-
-        valid_fold_count = sum(fold_result.valid for fold_result in fold_results)
-
-        return (
-            (f"{valid_fold_count} of {len(folds)} walk-forward folds were executable."),
-            (f"{evaluation_count} signal-observation pairs were processed."),
-            (
-                "Each signal uses only the earliest observation strictly "
-                "after its creation timestamp."
-            ),
-        )
+__all__ = [
+    "BacktestExecutionEngine",
+    "BacktestExecutionResult",
+    "BacktestFoldResult",
+    "BacktestSignal",
+    "TimeAwareObservation",
+]

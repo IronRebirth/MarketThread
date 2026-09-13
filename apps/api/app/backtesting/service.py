@@ -1,13 +1,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.backtesting.analyzer import TimeAwareBacktestAnalyzer
-from app.backtesting.engine import (
+from .analyzer import TimeAwareBacktestAnalyzer, WalkForwardBacktestAnalyzer
+from .engine import (
     BacktestExecutionEngine,
     BacktestExecutionResult,
     BacktestSignal,
 )
-from app.backtesting.models import (
+from .models import (
     BacktestPeriod,
     TimeAwareBacktestSummary,
     TimeAwareEvaluation,
@@ -15,14 +15,14 @@ from app.backtesting.models import (
     WalkForwardFold,
     WalkForwardResult,
 )
-from app.backtesting.walk_forward import WalkForwardBacktestAnalyzer
 
 
 class TimeAwareBacktestService:
-    """Application service for time-aware backtesting."""
-
-    def __init__(self) -> None:
-        self._analyzer = TimeAwareBacktestAnalyzer()
+    def __init__(
+        self,
+        analyzer: TimeAwareBacktestAnalyzer | None = None,
+    ) -> None:
+        self._analyzer = analyzer or TimeAwareBacktestAnalyzer()
 
     def evaluate(
         self,
@@ -30,74 +30,85 @@ class TimeAwareBacktestService:
         event_id: UUID,
         signal_created_at: datetime,
         observation: TimeAwareObservation,
+        signal_direction=None,
+        signal_strength=None,
+        recommendation_state=None,
+        signal_confidence: float = 0.0,
     ) -> TimeAwareEvaluation:
-        """Evaluate one historical observation with temporal validation."""
+        kwargs = {
+            "signal_id": signal_id,
+            "event_id": event_id,
+            "signal_created_at": signal_created_at,
+            "observation": observation,
+            "instrument_id": observation.instrument_id,
+            "signal_confidence": signal_confidence,
+        }
 
-        return self._analyzer.evaluate(
-            signal_id=signal_id,
-            event_id=event_id,
-            signal_created_at=signal_created_at,
-            observation=observation,
-        )
+        if signal_direction is not None:
+            kwargs["signal_direction"] = signal_direction
+
+        if signal_strength is not None:
+            kwargs["signal_strength"] = signal_strength
+
+        if recommendation_state is not None:
+            kwargs["recommendation_state"] = recommendation_state
+
+        return self._analyzer.evaluate(**kwargs)
 
     def summarize(
         self,
-        evaluations: tuple[TimeAwareEvaluation, ...],
+        evaluations: tuple[TimeAwareEvaluation, ...] | list[TimeAwareEvaluation],
     ) -> TimeAwareBacktestSummary:
-        """Summarize time-aware evaluations."""
-
         return self._analyzer.summarize(evaluations)
 
 
 class WalkForwardBacktestService:
-    """Application service for walk-forward backtesting."""
-
-    def __init__(self) -> None:
-        self._analyzer = WalkForwardBacktestAnalyzer()
+    def __init__(
+        self,
+        analyzer: WalkForwardBacktestAnalyzer | None = None,
+    ) -> None:
+        self._analyzer = analyzer or WalkForwardBacktestAnalyzer()
 
     def create_folds(
         self,
-        training_periods: tuple[BacktestPeriod, ...],
-        evaluation_periods: tuple[BacktestPeriod, ...],
+        training_periods: tuple[BacktestPeriod, ...] | list[BacktestPeriod],
+        evaluation_periods: tuple[BacktestPeriod, ...] | list[BacktestPeriod],
     ) -> tuple[WalkForwardFold, ...]:
-        """Create chronological walk-forward folds."""
-
         return self._analyzer.create_folds(
-            training_periods=training_periods,
-            evaluation_periods=evaluation_periods,
+            tuple(training_periods),
+            tuple(evaluation_periods),
         )
 
     def validate(
         self,
-        folds: tuple[WalkForwardFold, ...],
+        folds: tuple[WalkForwardFold, ...] | list[WalkForwardFold],
+        *,
         backtest_id: UUID | None = None,
     ) -> WalkForwardResult:
-        """Validate walk-forward folds."""
-
         return self._analyzer.validate(
-            folds=folds,
+            tuple(folds),
             backtest_id=backtest_id,
         )
 
 
 class BacktestExecutionService:
-    """Application service for executing walk-forward backtests."""
-
-    def __init__(self) -> None:
-        self._engine = BacktestExecutionEngine()
+    def __init__(
+        self,
+        engine: BacktestExecutionEngine | None = None,
+    ) -> None:
+        self._engine = engine or BacktestExecutionEngine()
 
     def execute(
         self,
-        folds: tuple[WalkForwardFold, ...],
-        signals: tuple[BacktestSignal, ...],
-        observations: tuple[TimeAwareObservation, ...],
+        *,
+        folds: tuple[WalkForwardFold, ...] | list[WalkForwardFold],
+        signals: tuple[BacktestSignal, ...] | list[BacktestSignal],
+        observations: tuple[TimeAwareObservation, ...] | list[TimeAwareObservation],
         backtest_id: UUID | None = None,
     ) -> BacktestExecutionResult:
-        """Execute a walk-forward backtest."""
-
         return self._engine.execute(
-            folds=folds,
-            signals=signals,
-            observations=observations,
+            folds=tuple(folds),
+            signals=tuple(signals),
+            observations=tuple(observations),
             backtest_id=backtest_id,
         )
