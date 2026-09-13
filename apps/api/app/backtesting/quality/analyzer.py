@@ -73,7 +73,7 @@ class BacktestEvaluationQualityAnalyzer:
         else:
             state = BacktestQualityState.RELIABLE
             notes.append(
-                "The evaluation sample meets the minimum quality threshold.",
+                "The evaluation sample meets the configured quality threshold.",
             )
 
         if coverage_ratio is not None and coverage_ratio < minimum_coverage_ratio:
@@ -85,12 +85,10 @@ class BacktestEvaluationQualityAnalyzer:
             if state == BacktestQualityState.RELIABLE:
                 state = BacktestQualityState.LIMITED_EVIDENCE
 
-        if expected_count is not None:
+        if coverage_ratio is not None:
             notes.append(
-                f"Evaluation coverage is "
-                f"{coverage_ratio:.1%} of the expected evaluation set."
-                if coverage_ratio is not None
-                else "Evaluation coverage could not be calculated.",
+                f"Evaluation coverage is {coverage_ratio:.1%} "
+                "of the expected evaluation set.",
             )
 
         return BacktestQualityAssessment(

@@ -11,6 +11,10 @@ from app.evaluation.models import (
 from .engine import BacktestExecutionResult
 from .horizon import BacktestHorizon
 from .models import BacktestStatus, TimeAwareEvaluation
+from .quality import (
+    BacktestEvaluationQualityService,
+    BacktestQualityAssessment,
+)
 
 
 class PerformanceBreakdownSummary(BaseModel):
@@ -20,6 +24,7 @@ class PerformanceBreakdownSummary(BaseModel):
     average_forward_return_pct: float | None = None
     average_relative_return_pct: float | None = None
     positive_outcome_rate: float | None = None
+    quality: BacktestQualityAssessment | None = None
 
 
 class PerformanceBreakdown(BaseModel):
@@ -37,6 +42,8 @@ class BacktestPerformanceReport(BaseModel):
     average_forward_return_pct: float | None = None
     average_relative_return_pct: float | None = None
     positive_outcome_rate: float | None = None
+
+    quality: BacktestQualityAssessment
 
     by_horizon: PerformanceBreakdown = Field(
         default_factory=PerformanceBreakdown,
@@ -63,7 +70,16 @@ def build_performance_report(
     )
 
     analyzer = SignalEvaluationAnalyzer()
+    quality_service = BacktestEvaluationQualityService()
+
     overall = analyzer.summarize(valid_evaluations)
+
+    expected_count = execution.evaluation_count
+
+    quality = quality_service.assess(
+        evaluation_count=len(valid_evaluations),
+        expected_count=expected_count,
+    )
 
     horizon_evaluations = tuple(
         evaluation for evaluation in valid_evaluations if evaluation.horizon is not None
@@ -71,6 +87,7 @@ def build_performance_report(
 
     horizon_summaries = _build_horizon_summaries(
         horizon_evaluations,
+        quality_service,
         analyzer,
     )
 
@@ -93,13 +110,21 @@ def build_performance_report(
     )
 
     if not evaluations:
-        notes = ("No evaluations are available for performance reporting.",)
+        notes = (
+            "No evaluations are available for performance reporting.",
+            "Overall quality is marked as insufficient evidence.",
+        )
     elif not valid_evaluations:
-        notes = ("No valid evaluations are available for performance reporting.",)
+        notes = (
+            "No valid evaluations are available for performance reporting.",
+            "Overall quality is marked as insufficient evidence.",
+        )
     else:
         notes = (
             "Performance metrics are based only on temporally valid evaluations.",
             "Horizon metrics are derived from horizon-specific backtest evaluations.",
+            "Quality state reflects sample size and, when available, "
+            "evaluation coverage.",
             "Confidence is treated as evidence support, not probability of profit.",
         )
 
@@ -112,6 +137,7 @@ def build_performance_report(
         average_forward_return_pct=overall.average_forward_return_pct,
         average_relative_return_pct=overall.average_relative_return_pct,
         positive_outcome_rate=overall.positive_outcome_rate,
+        quality=quality,
         by_horizon=PerformanceBreakdown(
             summaries=horizon_summaries,
         ),
@@ -127,6 +153,7 @@ def build_performance_report(
 
 def _build_horizon_summaries(
     evaluations: tuple[TimeAwareEvaluation, ...],
+    quality_service: BacktestEvaluationQualityService,
     analyzer: SignalEvaluationAnalyzer,
 ) -> tuple[PerformanceBreakdownSummary, ...]:
     summaries: list[PerformanceBreakdownSummary] = []
@@ -146,6 +173,9 @@ def _build_horizon_summaries(
                 average_forward_return_pct=summary.average_forward_return_pct,
                 average_relative_return_pct=summary.average_relative_return_pct,
                 positive_outcome_rate=summary.positive_outcome_rate,
+                quality=quality_service.assess(
+                    evaluation_count=summary.evaluation_count,
+                ),
             ),
         )
 
