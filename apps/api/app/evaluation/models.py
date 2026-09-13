@@ -61,3 +61,33 @@ class EvaluationSummary(BaseModel):
         le=1.0,
     )
     notes: tuple[str, ...] = ()
+
+
+class EvaluationHorizonSummary(BaseModel):
+    """Evaluation metrics for one specific forward-looking horizon."""
+
+    model_config = ConfigDict(frozen=True)
+
+    window: EvaluationWindow
+    evaluation_count: int = Field(ge=0)
+    directional_accuracy: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
+    average_forward_return_pct: float | None = None
+    average_relative_return_pct: float | None = None
+    positive_outcome_rate: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
+
+
+class EvaluationByHorizonSummary(BaseModel):
+    """Aggregate evaluation metrics grouped by forward horizon."""
+
+    model_config = ConfigDict(frozen=True)
+
+    summaries: tuple[EvaluationHorizonSummary, ...] = ()
+    notes: tuple[str, ...] = ()
