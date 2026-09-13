@@ -8,6 +8,7 @@ from app.evaluation.models import (
     EvaluationSignalStrength,
 )
 
+from .horizon import BacktestHorizon
 from .models import (
     BacktestStatus,
     TemporalValidationError,
@@ -34,6 +35,7 @@ class TimeAwareBacktestAnalyzer:
             EvaluationRecommendationState.CONSIDER
         ),
         signal_confidence: float = 0.0,
+        horizon: BacktestHorizon | None = None,
     ) -> TimeAwareEvaluation:
         resolved_instrument_id = instrument_id
 
@@ -50,6 +52,7 @@ class TimeAwareBacktestAnalyzer:
             "signal_strength": signal_strength,
             "recommendation_state": recommendation_state,
             "signal_confidence": signal_confidence,
+            "horizon": horizon,
         }
 
         if observation is None:
@@ -98,6 +101,20 @@ class TimeAwareBacktestAnalyzer:
                 ),
             )
 
+        if (
+            horizon is not None
+            and observation.horizon is not None
+            and observation.horizon != horizon
+        ):
+            return TimeAwareEvaluation(
+                **common,
+                status=BacktestStatus.REJECTED,
+                notes=(
+                    "Evaluation rejected because the observation horizon "
+                    "does not match the requested horizon.",
+                ),
+            )
+
         observed_direction = self._classify_return(
             observation.forward_return_pct,
         )
@@ -131,6 +148,11 @@ class TimeAwareBacktestAnalyzer:
             notes=(
                 "Observation occurs strictly after the signal timestamp.",
                 "Look-ahead observations are excluded from signal evaluation.",
+            )
+            + (
+                ("Evaluation uses the explicitly requested horizon.",)
+                if horizon is not None
+                else ()
             ),
         )
 
