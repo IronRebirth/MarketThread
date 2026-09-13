@@ -9,6 +9,7 @@ from app.evaluation.models import (
 )
 
 from .engine import BacktestExecutionResult
+from .horizon import BacktestHorizon
 from .models import BacktestStatus, TimeAwareEvaluation
 
 
@@ -64,6 +65,15 @@ def build_performance_report(
     analyzer = SignalEvaluationAnalyzer()
     overall = analyzer.summarize(valid_evaluations)
 
+    horizon_evaluations = tuple(
+        evaluation for evaluation in valid_evaluations if evaluation.horizon is not None
+    )
+
+    horizon_summaries = _build_horizon_summaries(
+        horizon_evaluations,
+        analyzer,
+    )
+
     signal_strength_summaries = tuple(
         _build_strength_summary(
             valid_evaluations,
@@ -82,16 +92,14 @@ def build_performance_report(
         for recommendation_state in EvaluationRecommendationState
     )
 
-    horizon_summaries = _build_horizon_summaries(
-        valid_evaluations,
-        analyzer,
-    )
-
-    if not valid_evaluations:
+    if not evaluations:
         notes = ("No evaluations are available for performance reporting.",)
+    elif not valid_evaluations:
+        notes = ("No valid evaluations are available for performance reporting.",)
     else:
         notes = (
             "Performance metrics are based only on temporally valid evaluations.",
+            "Horizon metrics are derived from horizon-specific backtest evaluations.",
             "Confidence is treated as evidence support, not probability of profit.",
         )
 
@@ -123,8 +131,12 @@ def _build_horizon_summaries(
 ) -> tuple[PerformanceBreakdownSummary, ...]:
     summaries: list[PerformanceBreakdownSummary] = []
 
-    for horizon in ("1d", "5d", "20d"):
-        summary = analyzer.summarize(evaluations)
+    for horizon in BacktestHorizon:
+        grouped = tuple(
+            evaluation for evaluation in evaluations if evaluation.horizon == horizon
+        )
+
+        summary = analyzer.summarize(grouped)
 
         summaries.append(
             PerformanceBreakdownSummary(
