@@ -42,7 +42,9 @@ class RiskConfidenceAnalyzer:
             confidence=confidence,
             risk=risk,
             evidence_article_ids=signal.evidence_article_ids,
-            invalidation_conditions=tuple(dict.fromkeys(invalidation_conditions)),
+            invalidation_conditions=tuple(
+                dict.fromkeys(invalidation_conditions),
+            ),
         )
 
     @staticmethod
@@ -51,8 +53,6 @@ class RiskConfidenceAnalyzer:
         market_impact: MarketImpact,
     ) -> ConfidenceAssessment:
         """Assess evidence support without interpreting confidence as profit probability."""
-
-        score = signal.confidence
 
         supporting_factors: list[str] = [
             "The signal has traceable source article references.",
@@ -70,16 +70,18 @@ class RiskConfidenceAnalyzer:
         if market_impact.time_horizon.value == "uncertain":
             limitations.append("The expected impact horizon is uncertain.")
 
-        level = RiskConfidenceAnalyzer._confidence_level(score)
+        level = RiskConfidenceAnalyzer._confidence_level(
+            signal.confidence,
+        )
 
         rationale = (
             f"Evidence confidence is {level.value} with a score of "
-            f"{score:.2f}. This score represents support for the "
+            f"{signal.confidence:.2f}. This score represents support for the "
             "interpretation, not the probability of a profitable outcome."
         )
 
         return ConfidenceAssessment(
-            score=score,
+            score=signal.confidence,
             level=level,
             supporting_factors=tuple(supporting_factors),
             limitations=tuple(limitations),
@@ -94,7 +96,6 @@ class RiskConfidenceAnalyzer:
     ) -> RiskAssessment:
         """Assess interpretation risk from observable uncertainty factors."""
 
-        score = signal.risk_score
         factors: list[RiskFactor] = []
 
         if confidence.score < 0.8:
@@ -112,16 +113,19 @@ class RiskConfidenceAnalyzer:
         if not signal.evidence_article_ids:
             factors.append(RiskFactor.LIMITED_EVIDENCE)
 
-        level = RiskConfidenceAnalyzer._risk_level(score)
+        level = RiskConfidenceAnalyzer._risk_level(
+            signal.risk_score,
+        )
 
         rationale = (
             f"Interpretation risk is {level.value} with a score of "
-            f"{score:.2f}. Risk reflects uncertainty in the analytical "
-            "chain and does not represent a forecasted loss percentage."
+            f"{signal.risk_score:.2f}. Risk reflects uncertainty in the "
+            "analytical chain and does not represent a forecasted loss "
+            "percentage."
         )
 
         return RiskAssessment(
-            score=score,
+            score=signal.risk_score,
             level=level,
             factors=tuple(dict.fromkeys(factors)),
             rationale=rationale,
