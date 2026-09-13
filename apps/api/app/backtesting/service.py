@@ -2,6 +2,11 @@ from datetime import datetime
 from uuid import UUID
 
 from app.backtesting.analyzer import TimeAwareBacktestAnalyzer
+from app.backtesting.engine import (
+    BacktestExecutionEngine,
+    BacktestExecutionResult,
+    BacktestSignal,
+)
 from app.backtesting.models import (
     BacktestPeriod,
     TimeAwareBacktestSummary,
@@ -71,5 +76,28 @@ class WalkForwardBacktestService:
 
         return self._analyzer.validate(
             folds=folds,
+            backtest_id=backtest_id,
+        )
+
+
+class BacktestExecutionService:
+    """Application service for executing walk-forward backtests."""
+
+    def __init__(self) -> None:
+        self._engine = BacktestExecutionEngine()
+
+    def execute(
+        self,
+        folds: tuple[WalkForwardFold, ...],
+        signals: tuple[BacktestSignal, ...],
+        observations: tuple[TimeAwareObservation, ...],
+        backtest_id: UUID | None = None,
+    ) -> BacktestExecutionResult:
+        """Execute a walk-forward backtest."""
+
+        return self._engine.execute(
+            folds=folds,
+            signals=signals,
+            observations=observations,
             backtest_id=backtest_id,
         )
