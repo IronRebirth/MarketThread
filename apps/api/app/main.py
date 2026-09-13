@@ -1,8 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
+from app.core.config import get_settings
+
+settings = get_settings()
+
 app = FastAPI(
-    title="MarketThread API",
+    title=f"{settings.app_name} API",
     version="0.1.0",
     description=("Backend API for the MarketThread financial intelligence platform."),
 )
@@ -15,14 +20,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+
 
 @app.get("/health", tags=["system"])
 async def health() -> dict[str, str]:
     """Return the basic health status of the API."""
+
     return {"status": "healthy"}
 
 
 @app.get("/ready", tags=["system"])
 async def readiness() -> dict[str, str]:
     """Return the readiness status of the API."""
+
     return {"status": "ready"}
