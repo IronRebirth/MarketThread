@@ -52,7 +52,7 @@ class RiskConfidenceAnalyzer:
         signal: MarketSignal,
         market_impact: MarketImpact,
     ) -> ConfidenceAssessment:
-        """Assess evidence support without interpreting confidence as profit probability."""
+        """Assess evidence support without interpreting it as profit probability."""
 
         supporting_factors: list[str] = [
             "The signal has traceable source article references.",
