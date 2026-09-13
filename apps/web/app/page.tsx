@@ -1,8 +1,8 @@
+import { AppShell } from "../components/layout/app-shell";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { ThemeSwitcher } from "../components/ui/theme-switcher";
 
 const metrics = [
   {
@@ -24,36 +24,26 @@ const metrics = [
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-6 py-10 sm:px-8 lg:px-10">
-        <header className="flex flex-col gap-6 border-b border-border pb-8">
-          <div className="flex items-start justify-between gap-6">
-            <div className="flex flex-col gap-3">
-              <Badge variant="info">Design system</Badge>
-
-              <div>
-                <p className="text-sm font-medium text-brand">MarketThread</p>
-
-                <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
-                  Global market intelligence, built for evidence-driven
-                  decisions.
-                </h1>
-
-                <p className="mt-3 max-w-2xl text-base leading-7 text-text-secondary">
-                  A restrained interface foundation for market research, event
-                  intelligence, company analysis, and risk-aware insights.
-                </p>
-              </div>
-            </div>
-
-            <ThemeSwitcher />
+    <AppShell>
+      <div className="flex flex-col gap-8">
+        <header className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="info">Application shell</Badge>
+            <Badge variant="neutral">Development</Badge>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button>Primary action</Button>
-            <Button variant="secondary">Secondary action</Button>
-            <Button variant="ghost">Ghost action</Button>
-            <Button variant="danger">Danger action</Button>
+          <div>
+            <p className="text-sm font-medium text-brand">MarketThread</p>
+
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
+              Global market intelligence
+            </h1>
+
+            <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
+              The shared product shell for market intelligence, news,
+              event analysis, company research, portfolio intelligence, and
+              evidence-driven recommendations.
+            </p>
           </div>
         </header>
 
@@ -63,6 +53,7 @@ export default function Home() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm text-text-secondary">{metric.label}</p>
+
                   <p className="mt-2 text-2xl font-semibold text-text-primary">
                     {metric.value}
                   </p>
@@ -76,8 +67,8 @@ export default function Home() {
 
         <section className="grid gap-6 lg:grid-cols-[1.4fr_0.6fr]">
           <Card
-            title="Evidence summary"
-            description="Example research content using the core information hierarchy."
+            title="Intelligence workspace"
+            description="The main content area is intentionally neutral so individual product modules can own their information architecture."
           >
             <div className="space-y-5">
               <div>
@@ -97,8 +88,8 @@ export default function Home() {
                 </p>
 
                 <p className="mt-2 text-sm leading-6 text-text-secondary">
-                  The event may affect supply, demand, sentiment, and company
-                  fundamentals, but available evidence remains incomplete.
+                  MarketThread will connect events, evidence, company impact,
+                  confidence, and risk inside this workspace.
                 </p>
               </div>
 
@@ -112,8 +103,8 @@ export default function Home() {
           </Card>
 
           <Card
-            title="Research filter"
-            description="Input styling for future search and analysis workflows."
+            title="Research"
+            description="Global search patterns will eventually connect to the intelligence API."
           >
             <div className="space-y-4">
               <Input
@@ -132,37 +123,7 @@ export default function Home() {
             </div>
           </Card>
         </section>
-
-        <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <p className="text-sm font-medium text-text-muted">Neutral</p>
-            <div className="mt-3">
-              <Badge variant="neutral">Watch</Badge>
-            </div>
-          </Card>
-
-          <Card>
-            <p className="text-sm font-medium text-text-muted">Positive</p>
-            <div className="mt-3">
-              <Badge variant="positive">Consider</Badge>
-            </div>
-          </Card>
-
-          <Card>
-            <p className="text-sm font-medium text-text-muted">Warning</p>
-            <div className="mt-3">
-              <Badge variant="warning">Moderate risk</Badge>
-            </div>
-          </Card>
-
-          <Card>
-            <p className="text-sm font-medium text-text-muted">Negative</p>
-            <div className="mt-3">
-              <Badge variant="negative">Reduce</Badge>
-            </div>
-          </Card>
-        </section>
       </div>
-    </main>
+    </AppShell>
   );
 }
