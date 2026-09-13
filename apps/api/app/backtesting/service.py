@@ -3,10 +3,14 @@ from uuid import UUID
 
 from app.backtesting.analyzer import TimeAwareBacktestAnalyzer
 from app.backtesting.models import (
+    BacktestPeriod,
     TimeAwareBacktestSummary,
     TimeAwareEvaluation,
     TimeAwareObservation,
+    WalkForwardFold,
+    WalkForwardResult,
 )
+from app.backtesting.walk_forward import WalkForwardBacktestAnalyzer
 
 
 class TimeAwareBacktestService:
@@ -38,3 +42,34 @@ class TimeAwareBacktestService:
         """Summarize time-aware evaluations."""
 
         return self._analyzer.summarize(evaluations)
+
+
+class WalkForwardBacktestService:
+    """Application service for walk-forward backtesting."""
+
+    def __init__(self) -> None:
+        self._analyzer = WalkForwardBacktestAnalyzer()
+
+    def create_folds(
+        self,
+        training_periods: tuple[BacktestPeriod, ...],
+        evaluation_periods: tuple[BacktestPeriod, ...],
+    ) -> tuple[WalkForwardFold, ...]:
+        """Create chronological walk-forward folds."""
+
+        return self._analyzer.create_folds(
+            training_periods=training_periods,
+            evaluation_periods=evaluation_periods,
+        )
+
+    def validate(
+        self,
+        folds: tuple[WalkForwardFold, ...],
+        backtest_id: UUID | None = None,
+    ) -> WalkForwardResult:
+        """Validate walk-forward folds."""
+
+        return self._analyzer.validate(
+            folds=folds,
+            backtest_id=backtest_id,
+        )
