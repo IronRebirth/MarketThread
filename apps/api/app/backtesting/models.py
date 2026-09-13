@@ -57,3 +57,48 @@ class TimeAwareBacktestSummary(BaseModel):
     rejected_evaluations: int = Field(ge=0)
     average_relative_return_pct: float | None = None
     notes: tuple[str, ...] = ()
+
+
+class BacktestPeriod(BaseModel):
+    """A chronological period used by a walk-forward backtest."""
+
+    model_config = ConfigDict(frozen=True)
+
+    start_at: datetime
+    end_at: datetime
+
+    def duration_is_positive(self) -> bool:
+        """Return whether the period has a positive duration."""
+
+        return self.end_at > self.start_at
+
+
+class WalkForwardFold(BaseModel):
+    """One train/evaluate split in a walk-forward backtest."""
+
+    model_config = ConfigDict(frozen=True)
+
+    fold_number: int = Field(ge=1)
+    training_period: BacktestPeriod
+    evaluation_period: BacktestPeriod
+
+    def is_temporally_valid(self) -> bool:
+        """Return whether evaluation starts at or after training ends."""
+
+        return (
+            self.training_period.duration_is_positive()
+            and self.evaluation_period.duration_is_positive()
+            and self.evaluation_period.start_at >= self.training_period.end_at
+        )
+
+
+class WalkForwardResult(BaseModel):
+    """Result of validating a walk-forward backtest configuration."""
+
+    model_config = ConfigDict(frozen=True)
+
+    backtest_id: UUID
+    folds: tuple[WalkForwardFold, ...] = ()
+    valid: bool
+    invalid_fold_numbers: tuple[int, ...] = ()
+    notes: tuple[str, ...] = ()
