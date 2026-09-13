@@ -4,7 +4,10 @@ from uuid import UUID
 from app.evaluation.analyzer import SignalEvaluationAnalyzer
 from app.evaluation.models import (
     EvaluationByHorizonSummary,
+    EvaluationByStateSummary,
     EvaluationDirection,
+    EvaluationRecommendationState,
+    EvaluationSignalStrength,
     EvaluationSummary,
     EvaluationWindow,
     SignalEvaluation,
@@ -25,6 +28,8 @@ class SignalEvaluationService:
         window: EvaluationWindow,
         signal_direction: EvaluationDirection,
         observed_direction: EvaluationDirection,
+        signal_strength: EvaluationSignalStrength,
+        recommendation_state: EvaluationRecommendationState,
         signal_confidence: float,
         forward_return_pct: float | None,
         benchmark_return_pct: float | None,
@@ -39,6 +44,8 @@ class SignalEvaluationService:
             window=window,
             signal_direction=signal_direction,
             observed_direction=observed_direction,
+            signal_strength=signal_strength,
+            recommendation_state=recommendation_state,
             signal_confidence=signal_confidence,
             forward_return_pct=forward_return_pct,
             benchmark_return_pct=benchmark_return_pct,
@@ -60,3 +67,19 @@ class SignalEvaluationService:
         """Summarize historical evaluations by observation horizon."""
 
         return self._analyzer.summarize_by_horizon(evaluations)
+
+    def summarize_by_signal_strength(
+        self,
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationByStateSummary:
+        """Summarize historical evaluations by signal strength."""
+
+        return self._analyzer.summarize_by_signal_strength(evaluations)
+
+    def summarize_by_recommendation_state(
+        self,
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationByStateSummary:
+        """Summarize historical evaluations by recommendation state."""
+
+        return self._analyzer.summarize_by_recommendation_state(evaluations)
