@@ -123,7 +123,8 @@ def build_performance_report(
         notes = (
             "Performance metrics are based only on temporally valid evaluations.",
             "Horizon metrics are derived from horizon-specific backtest evaluations.",
-            "Quality state reflects sample size and, when available, evaluation coverage.",
+            "Quality state reflects sample size and, when available, "
+            "evaluation coverage.",
             "Confidence is treated as evidence support, not probability of profit.",
         )
 
