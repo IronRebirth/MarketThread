@@ -10,6 +10,8 @@ from app.evaluation.models import (
     EvaluationSignalStrength,
 )
 
+from .horizon import BacktestHorizon
+
 
 class BacktestStatus(StrEnum):
     VALID = "valid"
@@ -27,6 +29,7 @@ class TimeAwareObservation(BaseModel):
     observed_at: datetime | None = None
     forward_return_pct: float | None = None
     benchmark_return_pct: float | None = None
+    horizon: BacktestHorizon | None = None
 
 
 class TimeAwareEvaluation(BaseModel):
@@ -45,6 +48,8 @@ class TimeAwareEvaluation(BaseModel):
         EvaluationRecommendationState.CONSIDER
     )
     signal_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    horizon: BacktestHorizon | None = None
 
     forward_return_pct: float | None = None
     benchmark_return_pct: float | None = None
@@ -151,4 +156,12 @@ class BacktestExecutionResult(BaseModel):
             evaluation
             for fold_result in self.fold_results
             for evaluation in fold_result.evaluations
+        ]
+
+    @property
+    def horizon_evaluations(self) -> list[TimeAwareEvaluation]:
+        return [
+            evaluation
+            for evaluation in self.evaluations
+            if evaluation.horizon is not None
         ]

@@ -53,6 +53,9 @@ class TimeAwareBacktestService:
         if recommendation_state is not None:
             kwargs["recommendation_state"] = recommendation_state
 
+        if observation.horizon is not None:
+            kwargs["horizon"] = observation.horizon
+
         return self._analyzer.evaluate(**kwargs)
 
     def summarize(
