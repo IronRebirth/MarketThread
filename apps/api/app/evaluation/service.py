@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.evaluation.analyzer import SignalEvaluationAnalyzer
 from app.evaluation.models import (
+    EvaluationByHorizonSummary,
     EvaluationDirection,
     EvaluationSummary,
     EvaluationWindow,
@@ -51,3 +52,11 @@ class SignalEvaluationService:
         """Summarize historical signal evaluations."""
 
         return self._analyzer.summarize(evaluations)
+
+    def summarize_by_horizon(
+        self,
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationByHorizonSummary:
+        """Summarize historical evaluations by observation horizon."""
+
+        return self._analyzer.summarize_by_horizon(evaluations)

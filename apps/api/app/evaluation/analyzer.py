@@ -2,7 +2,9 @@ from datetime import datetime
 from uuid import UUID
 
 from app.evaluation.models import (
+    EvaluationByHorizonSummary,
     EvaluationDirection,
+    EvaluationHorizonSummary,
     EvaluationSummary,
     EvaluationWindow,
     SignalEvaluation,
@@ -118,6 +120,84 @@ class SignalEvaluationAnalyzer:
             notes=notes,
         )
 
+    def summarize_by_horizon(
+        self,
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> EvaluationByHorizonSummary:
+        """Aggregate historical evaluation results separately by horizon."""
+
+        summaries = tuple(
+            self._summarize_horizon(evaluations, window) for window in EvaluationWindow
+        )
+
+        return EvaluationByHorizonSummary(
+            summaries=summaries,
+            notes=self._build_horizon_summary_notes(
+                evaluations=evaluations,
+            ),
+        )
+
+    @staticmethod
+    def _summarize_horizon(
+        evaluations: tuple[SignalEvaluation, ...],
+        window: EvaluationWindow,
+    ) -> EvaluationHorizonSummary:
+        """Summarize evaluations for one horizon."""
+
+        window_evaluations = tuple(
+            evaluation for evaluation in evaluations if evaluation.window == window
+        )
+
+        evaluated_directions = [
+            evaluation.direction_correct
+            for evaluation in window_evaluations
+            if evaluation.direction_correct is not None
+        ]
+
+        returns = [
+            evaluation.forward_return_pct
+            for evaluation in window_evaluations
+            if evaluation.forward_return_pct is not None
+        ]
+
+        relative_returns = [
+            evaluation.relative_return_pct
+            for evaluation in window_evaluations
+            if evaluation.relative_return_pct is not None
+        ]
+
+        positive_outcomes = sum(
+            evaluation.observed_direction == EvaluationDirection.POSITIVE
+            for evaluation in window_evaluations
+        )
+
+        directional_accuracy = None
+
+        if evaluated_directions:
+            directional_accuracy = sum(evaluated_directions) / len(
+                evaluated_directions,
+            )
+
+        positive_outcome_rate = None
+
+        if window_evaluations:
+            positive_outcome_rate = positive_outcomes / len(
+                window_evaluations,
+            )
+
+        return EvaluationHorizonSummary(
+            window=window,
+            evaluation_count=len(window_evaluations),
+            directional_accuracy=directional_accuracy,
+            average_forward_return_pct=SignalEvaluationAnalyzer._average(
+                returns,
+            ),
+            average_relative_return_pct=SignalEvaluationAnalyzer._average(
+                relative_returns,
+            ),
+            positive_outcome_rate=positive_outcome_rate,
+        )
+
     @staticmethod
     def _direction_correct(
         signal_direction: EvaluationDirection,
@@ -204,3 +284,23 @@ class SignalEvaluationAnalyzer:
         )
 
         return tuple(notes)
+
+    @staticmethod
+    def _build_horizon_summary_notes(
+        evaluations: tuple[SignalEvaluation, ...],
+    ) -> tuple[str, ...]:
+        """Create notes for horizon-level evaluation results."""
+
+        if not evaluations:
+            return ("No historical signal evaluations are available by horizon.",)
+
+        return (
+            (
+                f"{len(evaluations)} historical evaluations were grouped "
+                "by forward observation horizon."
+            ),
+            (
+                "Horizon comparisons describe observed outcomes and do not "
+                "establish causation."
+            ),
+        )
