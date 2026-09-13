@@ -2,103 +2,153 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
+
+from app.evaluation.models import (
+    EvaluationDirection,
+    EvaluationRecommendationState,
+    EvaluationSignalStrength,
+)
 
 
 class BacktestStatus(StrEnum):
-    """Status of a time-aware backtest evaluation."""
-
     VALID = "valid"
     REJECTED = "rejected"
 
 
 class TemporalValidationError(StrEnum):
-    """Reason a historical observation violates temporal ordering."""
-
     OBSERVATION_BEFORE_SIGNAL = "observation_before_signal"
     OBSERVATION_AT_SIGNAL = "observation_at_signal"
     MISSING_OBSERVATION_TIMESTAMP = "missing_observation_timestamp"
 
 
 class TimeAwareObservation(BaseModel):
-    """Historical market observation used after a signal timestamp."""
-
-    model_config = ConfigDict(frozen=True)
-
     instrument_id: UUID
-    observed_at: datetime
+    observed_at: datetime | None = None
     forward_return_pct: float | None = None
     benchmark_return_pct: float | None = None
 
 
 class TimeAwareEvaluation(BaseModel):
-    """Temporally valid evaluation of a historical signal."""
-
-    model_config = ConfigDict(frozen=True)
-
     signal_id: UUID
     event_id: UUID
-    instrument_id: UUID
+    instrument_id: UUID | None = None
     signal_created_at: datetime
-    observation: TimeAwareObservation
+    observation: TimeAwareObservation | None = None
     status: BacktestStatus
     temporal_error: TemporalValidationError | None = None
+
+    signal_direction: EvaluationDirection = EvaluationDirection.UNAVAILABLE
+    observed_direction: EvaluationDirection = EvaluationDirection.UNAVAILABLE
+    signal_strength: EvaluationSignalStrength = EvaluationSignalStrength.STRONG
+    recommendation_state: EvaluationRecommendationState = (
+        EvaluationRecommendationState.CONSIDER
+    )
+    signal_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    forward_return_pct: float | None = None
+    benchmark_return_pct: float | None = None
     relative_return_pct: float | None = None
+    direction_correct: bool | None = None
+
     notes: tuple[str, ...] = ()
 
 
 class TimeAwareBacktestSummary(BaseModel):
-    """Aggregate summary of temporally valid evaluations."""
-
-    model_config = ConfigDict(frozen=True)
-
-    total_evaluations: int = Field(ge=0)
-    valid_evaluations: int = Field(ge=0)
-    rejected_evaluations: int = Field(ge=0)
+    total_evaluations: int
+    valid_evaluations: int
+    rejected_evaluations: int
+    observation_count: int
+    directional_accuracy: float | None = None
+    average_forward_return_pct: float | None = None
     average_relative_return_pct: float | None = None
+    positive_outcome_rate: float | None = None
     notes: tuple[str, ...] = ()
 
 
 class BacktestPeriod(BaseModel):
-    """A chronological period used by a walk-forward backtest."""
-
-    model_config = ConfigDict(frozen=True)
-
     start_at: datetime
     end_at: datetime
 
-    def duration_is_positive(self) -> bool:
-        """Return whether the period has a positive duration."""
+    @property
+    def start(self) -> datetime:
+        return self.start_at
 
+    @property
+    def end(self) -> datetime:
+        return self.end_at
+
+    def is_valid(self) -> bool:
         return self.end_at > self.start_at
 
 
 class WalkForwardFold(BaseModel):
-    """One train/evaluate split in a walk-forward backtest."""
+    fold_number: int
+    training_periods: tuple[BacktestPeriod, ...]
+    evaluation_periods: tuple[BacktestPeriod, ...]
 
-    model_config = ConfigDict(frozen=True)
+    @property
+    def training_period(self) -> BacktestPeriod:
+        return self.training_periods[-1]
 
-    fold_number: int = Field(ge=1)
-    training_period: BacktestPeriod
-    evaluation_period: BacktestPeriod
+    @property
+    def evaluation_period(self) -> BacktestPeriod:
+        return self.evaluation_periods[0]
 
     def is_temporally_valid(self) -> bool:
-        """Return whether evaluation starts at or after training ends."""
+        if not self.training_periods or not self.evaluation_periods:
+            return False
 
-        return (
-            self.training_period.duration_is_positive()
-            and self.evaluation_period.duration_is_positive()
-            and self.evaluation_period.start_at >= self.training_period.end_at
-        )
+        if not all(period.is_valid() for period in self.training_periods):
+            return False
+
+        if not all(period.is_valid() for period in self.evaluation_periods):
+            return False
+
+        return self.evaluation_period.start_at >= self.training_period.end_at
 
 
 class WalkForwardResult(BaseModel):
-    """Result of validating a walk-forward backtest configuration."""
-
-    model_config = ConfigDict(frozen=True)
-
-    backtest_id: UUID
+    backtest_id: UUID | None = None
     folds: tuple[WalkForwardFold, ...] = ()
     valid: bool
     invalid_fold_numbers: tuple[int, ...] = ()
     notes: tuple[str, ...] = ()
+
+
+class BacktestFoldResult(BaseModel):
+    fold_number: int
+    training_periods: tuple[BacktestPeriod, ...]
+    evaluation_periods: tuple[BacktestPeriod, ...]
+    evaluations: tuple[TimeAwareEvaluation, ...] = ()
+    valid: bool = True
+
+    @property
+    def training_period(self) -> BacktestPeriod:
+        return self.training_periods[-1]
+
+    @property
+    def evaluation_period(self) -> BacktestPeriod:
+        return self.evaluation_periods[0]
+
+
+class BacktestExecutionResult(BaseModel):
+    backtest_id: UUID
+    fold_results: tuple[BacktestFoldResult, ...] = ()
+    valid: bool
+    evaluation_count: int
+    valid_evaluation_count: int
+    rejected_evaluation_count: int
+    notes: tuple[str, ...] = ()
+
+    @property
+    def folds(self) -> tuple[BacktestFoldResult, ...]:
+        return self.fold_results
+
+    @property
+    def evaluations(self) -> list[TimeAwareEvaluation]:
+        return [
+            evaluation
+            for fold_result in self.fold_results
+            for evaluation in fold_result.evaluations
+        ]
