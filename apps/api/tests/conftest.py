@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
@@ -11,8 +12,10 @@ from sqlalchemy.ext.asyncio import (
 from app.db.session import get_db_session
 from app.main import app
 
-TEST_DATABASE_URL = (
-    "postgresql+psycopg://marketthread:change-me@localhost:5433/marketthread"
+
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+psycopg://marketthread:change-me@localhost:5433/marketthread",
 )
 
 test_engine = create_async_engine(
