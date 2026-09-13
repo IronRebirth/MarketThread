@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     database_url: str = (
-        "postgresql+psycopg://marketthread:change-me@localhost:5432/marketthread"
+        "postgresql+psycopg://marketthread:change-me@localhost:5433/marketthread"
     )
 
     redis_url: str = "redis://localhost:6379/0"
@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     market_data_api_key: str | None = None
+    market_data_base_url: str | None = None
+
     news_api_key: str | None = None
     llm_api_key: str | None = None
 
