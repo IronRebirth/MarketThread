@@ -1,0 +1,110 @@
+from pydantic import BaseModel, Field
+
+from .report import (
+    BacktestPerformanceReport,
+    PerformanceBreakdown,
+    PerformanceBreakdownSummary,
+)
+
+
+class BacktestPerformanceReportRequest(BaseModel):
+    execution: dict = Field(
+        description="Serialized BacktestExecutionResult.",
+    )
+
+
+class PerformanceBreakdownSummaryResponse(BaseModel):
+    state: str
+    evaluation_count: int
+    directional_accuracy: float | None = None
+    average_forward_return_pct: float | None = None
+    average_relative_return_pct: float | None = None
+    positive_outcome_rate: float | None = None
+    quality_state: str | None = None
+
+
+class PerformanceBreakdownResponse(BaseModel):
+    summaries: tuple[PerformanceBreakdownSummaryResponse, ...]
+
+
+class BacktestPerformanceReportResponse(BaseModel):
+    backtest_id: str
+    total_evaluations: int
+    valid_evaluations: int
+    rejected_evaluations: int
+
+    directional_accuracy: float | None = None
+    average_forward_return_pct: float | None = None
+    average_relative_return_pct: float | None = None
+    positive_outcome_rate: float | None = None
+
+    quality_state: str
+    quality_evaluation_count: int
+    quality_expected_count: int | None
+    quality_coverage_ratio: float | None
+    quality_warnings: tuple[str, ...]
+
+    by_horizon: PerformanceBreakdownResponse
+    by_signal_strength: PerformanceBreakdownResponse
+    by_recommendation_state: PerformanceBreakdownResponse
+
+    notes: tuple[str, ...]
+
+
+def to_response(
+    report: BacktestPerformanceReport,
+) -> BacktestPerformanceReportResponse:
+    return BacktestPerformanceReportResponse(
+        backtest_id=report.backtest_id,
+        total_evaluations=report.total_evaluations,
+        valid_evaluations=report.valid_evaluations,
+        rejected_evaluations=report.rejected_evaluations,
+        directional_accuracy=report.directional_accuracy,
+        average_forward_return_pct=report.average_forward_return_pct,
+        average_relative_return_pct=report.average_relative_return_pct,
+        positive_outcome_rate=report.positive_outcome_rate,
+        quality_state=report.quality.state.value,
+        quality_evaluation_count=report.quality.evaluation_count,
+        quality_expected_count=report.quality.expected_count,
+        quality_coverage_ratio=report.quality.coverage_ratio,
+        quality_warnings=tuple(warning.value for warning in report.quality.warnings),
+        by_horizon=_breakdown_to_response(report.by_horizon),
+        by_signal_strength=_breakdown_to_response(
+            report.by_signal_strength,
+        ),
+        by_recommendation_state=_breakdown_to_response(
+            report.by_recommendation_state,
+        ),
+        notes=report.notes,
+    )
+
+
+def _breakdown_to_response(
+    breakdown: PerformanceBreakdown,
+) -> PerformanceBreakdownResponse:
+    return PerformanceBreakdownResponse(
+        summaries=tuple(
+            _summary_to_response(summary) for summary in breakdown.summaries
+        ),
+    )
+
+
+def _summary_to_response(
+    summary: PerformanceBreakdownSummary,
+) -> PerformanceBreakdownSummaryResponse:
+    quality_state = None
+
+    if summary.quality is not None:
+        quality_state = summary.quality.state.value
+
+    return PerformanceBreakdownSummaryResponse(
+        state=str(summary.state.value)
+        if hasattr(summary.state, "value")
+        else str(summary.state),
+        evaluation_count=summary.evaluation_count,
+        directional_accuracy=summary.directional_accuracy,
+        average_forward_return_pct=summary.average_forward_return_pct,
+        average_relative_return_pct=summary.average_relative_return_pct,
+        positive_outcome_rate=summary.positive_outcome_rate,
+        quality_state=quality_state,
+    )
