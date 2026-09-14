@@ -36,6 +36,11 @@ export const primaryNavigation: NavigationItem[] = [
     description: "Risk-aware portfolio intelligence and allocation.",
   },
   {
+    label: "Backtesting",
+    href: "/backtests",
+    description: "Evaluate signals across historical market outcomes.",
+  },
+  {
     label: "Research Assistant",
     href: "/research",
     description: "Ask questions and explore market evidence.",
