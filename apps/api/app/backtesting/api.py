@@ -125,6 +125,7 @@ async def execute_server_side_backtest(
         resolution = await _data_resolver.resolve(
             session,
             evaluation_periods=request.evaluation_periods,
+            benchmark_instrument_id=request.benchmark_instrument_id,
         )
 
         execution = await _orchestrator.execute_and_persist(

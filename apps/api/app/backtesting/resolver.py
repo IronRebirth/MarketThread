@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.backtesting.engine import BacktestSignal
 from app.backtesting.horizon import BacktestHorizon
 from app.backtesting.models import BacktestPeriod, TimeAwareObservation
+from app.db.models.instrument import Instrument
 from app.db.models.market_bar import MarketBar
 from app.db.models.signal import SignalRecord
 from app.evaluation.models import (
@@ -59,6 +60,7 @@ class BacktestDataResolver:
         session: AsyncSession,
         *,
         evaluation_periods: tuple[BacktestPeriod, ...] | list[BacktestPeriod],
+        benchmark_instrument_id: UUID | None = None,
     ) -> BacktestDataResolutionResult:
         evaluation_periods = tuple(evaluation_periods)
 
@@ -66,6 +68,17 @@ class BacktestDataResolver:
             raise BacktestDataResolutionError(
                 "At least one evaluation period is required.",
             )
+
+        if benchmark_instrument_id is not None:
+            benchmark = await session.get(
+                Instrument,
+                benchmark_instrument_id,
+            )
+
+            if benchmark is None:
+                raise BacktestDataResolutionError(
+                    f"Benchmark instrument {benchmark_instrument_id} was not found.",
+                )
 
         signals = await self._load_signals(
             session,
@@ -128,6 +141,7 @@ class BacktestDataResolver:
         observations = await self._resolve_observations(
             session,
             resolved_signals,
+            benchmark_instrument_id=benchmark_instrument_id,
         )
 
         notes: list[str] = [
@@ -136,9 +150,22 @@ class BacktestDataResolver:
             "Entry bars must occur strictly after signal creation.",
             "Target bars are selected at or after the requested horizon.",
             "Forward returns are calculated from entry close to target close.",
-            "Benchmark returns are unavailable because no persisted benchmark "
-            "series is configured.",
         ]
+
+        if benchmark_instrument_id is None:
+            notes.append(
+                "Benchmark returns are unavailable because no benchmark "
+                "instrument was configured.",
+            )
+        else:
+            notes.append(
+                "Benchmark returns were resolved from the persisted benchmark "
+                "market bars using the same signal timestamp and horizon.",
+            )
+            notes.append(
+                "Relative return is calculated as target return minus "
+                "benchmark return.",
+            )
 
         if skipped_uncertain:
             notes.append(
@@ -186,8 +213,12 @@ class BacktestDataResolver:
         self,
         session: AsyncSession,
         signals: list[BacktestSignal],
+        *,
+        benchmark_instrument_id: UUID | None,
     ) -> tuple[TimeAwareObservation, ...]:
-        instrument_ids = tuple({signal.instrument_id for signal in signals})
+        target_instrument_ids = tuple(
+            {signal.instrument_id for signal in signals},
+        )
 
         minimum_signal_time = min(signal.created_at for signal in signals)
 
@@ -196,30 +227,27 @@ class BacktestDataResolver:
             for signal in signals
         )
 
-        result = await session.execute(
-            select(MarketBar)
-            .where(
-                MarketBar.instrument_id.in_(instrument_ids),
-                MarketBar.timestamp > minimum_signal_time,
-                MarketBar.timestamp <= maximum_target_time,
-            )
-            .order_by(
-                MarketBar.instrument_id,
-                MarketBar.timestamp,
-            ),
+        target_bars = await self._load_bars(
+            session,
+            instrument_ids=target_instrument_ids,
+            start_after=minimum_signal_time,
+            end_at=maximum_target_time,
         )
 
-        bars = tuple(result.scalars().all())
+        benchmark_bars: dict[UUID, list[MarketBar]] = {}
 
-        bars_by_instrument: dict[UUID, list[MarketBar]] = defaultdict(list)
-
-        for bar in bars:
-            bars_by_instrument[bar.instrument_id].append(bar)
+        if benchmark_instrument_id is not None:
+            benchmark_bars = await self._load_bars(
+                session,
+                instrument_ids=(benchmark_instrument_id,),
+                start_after=minimum_signal_time,
+                end_at=maximum_target_time,
+            )
 
         observations: list[TimeAwareObservation] = []
 
         for signal in signals:
-            instrument_bars = bars_by_instrument.get(
+            instrument_bars = target_bars.get(
                 signal.instrument_id,
                 [],
             )
@@ -229,16 +257,51 @@ class BacktestDataResolver:
 
             horizon = self._horizon_for_signal(signal)
 
+            benchmark_instrument_bars = benchmark_bars.get(
+                benchmark_instrument_id,
+                [],
+            )
+
             observation = self._build_observation(
                 signal=signal,
                 horizon=horizon,
                 bars=instrument_bars,
+                benchmark_bars=benchmark_instrument_bars,
             )
 
             if observation is not None:
                 observations.append(observation)
 
         return tuple(observations)
+
+    @staticmethod
+    async def _load_bars(
+        session: AsyncSession,
+        *,
+        instrument_ids: tuple[UUID, ...],
+        start_after,
+        end_at,
+    ) -> dict[UUID, list[MarketBar]]:
+        result = await session.execute(
+            select(MarketBar)
+            .where(
+                MarketBar.instrument_id.in_(instrument_ids),
+                MarketBar.timestamp > start_after,
+                MarketBar.timestamp <= end_at,
+            )
+            .order_by(
+                MarketBar.instrument_id,
+                MarketBar.timestamp,
+                MarketBar.id,
+            ),
+        )
+
+        grouped: dict[UUID, list[MarketBar]] = defaultdict(list)
+
+        for bar in result.scalars().all():
+            grouped[bar.instrument_id].append(bar)
+
+        return grouped
 
     @classmethod
     def _map_horizon(
@@ -277,6 +340,7 @@ class BacktestDataResolver:
         signal: BacktestSignal,
         horizon: BacktestHorizon,
         bars: list[MarketBar],
+        benchmark_bars: list[MarketBar],
     ) -> TimeAwareObservation | None:
         timestamps = [bar.timestamp for bar in bars]
 
@@ -314,12 +378,62 @@ class BacktestDataResolver:
             (target_bar.close / entry_bar.close - 1) * 100,
         )
 
+        benchmark_return_pct = None
+
+        if benchmark_bars:
+            benchmark_return_pct = BacktestDataResolver._calculate_benchmark_return(
+                signal_created_at=signal.created_at,
+                target_at=target_at,
+                bars=benchmark_bars,
+            )
+
         return TimeAwareObservation(
             instrument_id=signal.instrument_id,
             observed_at=target_bar.timestamp,
             forward_return_pct=round(forward_return_pct, 6),
-            benchmark_return_pct=None,
+            benchmark_return_pct=benchmark_return_pct,
             horizon=horizon,
+        )
+
+    @staticmethod
+    def _calculate_benchmark_return(
+        *,
+        signal_created_at,
+        target_at,
+        bars: list[MarketBar],
+    ) -> float | None:
+        timestamps = [bar.timestamp for bar in bars]
+
+        entry_index = bisect_right(
+            timestamps,
+            signal_created_at,
+        )
+
+        target_index = bisect_left(
+            timestamps,
+            target_at,
+        )
+
+        if entry_index >= len(bars):
+            return None
+
+        if target_index >= len(bars):
+            return None
+
+        entry_bar = bars[entry_index]
+        target_bar = bars[target_index]
+
+        if target_bar.timestamp <= entry_bar.timestamp:
+            return None
+
+        if entry_bar.close <= 0 or target_bar.close <= 0:
+            return None
+
+        return round(
+            float(
+                (target_bar.close / entry_bar.close - 1) * 100,
+            ),
+            6,
         )
 
 

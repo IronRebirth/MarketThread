@@ -15,18 +15,39 @@ from app.db.models.market_bar import MarketBar
 from app.db.models.signal import SignalRecord
 
 
-async def create_fixture_data(db_session):
+async def create_instrument(
+    db_session,
+    *,
+    name: str,
+    symbol_prefix: str,
+) -> Instrument:
     instrument = Instrument(
-        symbol=f"TST{uuid4().hex[:8].upper()}",
-        name="Server Side Test Instrument",
+        symbol=f"{symbol_prefix}{uuid4().hex[:8].upper()}",
+        name=name,
         exchange="TEST",
         asset_class="equity",
         currency="USD",
         is_active=True,
     )
+
     db_session.add(instrument)
     await db_session.commit()
     await db_session.refresh(instrument)
+
+    return instrument
+
+
+async def create_fixture_data(db_session):
+    instrument = await create_instrument(
+        db_session,
+        name="Server Side Test Instrument",
+        symbol_prefix="TST",
+    )
+    benchmark = await create_instrument(
+        db_session,
+        name="Server Side Benchmark Instrument",
+        symbol_prefix="BMK",
+    )
 
     signal = SignalRecord(
         event_id=uuid4(),
@@ -53,9 +74,10 @@ async def create_fixture_data(db_session):
         invalidation_conditions=[],
         rationale="Server-side API test signal.",
     )
+
     db_session.add(signal)
 
-    bars = (
+    target_bars = (
         MarketBar(
             instrument_id=instrument.id,
             timestamp=datetime(
@@ -92,15 +114,55 @@ async def create_fixture_data(db_session):
         ),
     )
 
-    db_session.add_all(bars)
+    benchmark_bars = (
+        MarketBar(
+            instrument_id=benchmark.id,
+            timestamp=datetime(
+                2099,
+                2,
+                2,
+                10,
+                1,
+                tzinfo=UTC,
+            ),
+            open=Decimal("200"),
+            high=Decimal("201"),
+            low=Decimal("199"),
+            close=Decimal("200"),
+            volume=Decimal("2000"),
+            source="test",
+        ),
+        MarketBar(
+            instrument_id=benchmark.id,
+            timestamp=datetime(
+                2099,
+                2,
+                3,
+                10,
+                0,
+                tzinfo=UTC,
+            ),
+            open=Decimal("202"),
+            high=Decimal("203"),
+            low=Decimal("201"),
+            close=Decimal("202"),
+            volume=Decimal("2000"),
+            source="test",
+        ),
+    )
+
+    db_session.add_all(
+        (*target_bars, *benchmark_bars),
+    )
     await db_session.commit()
 
-    return instrument, signal
+    return instrument, benchmark, signal
 
 
 async def cleanup(
     db_session,
     instrument_id: UUID,
+    benchmark_id: UUID,
     backtest_id: UUID | None,
 ) -> None:
     await db_session.rollback()
@@ -111,6 +173,7 @@ async def cleanup(
                 BacktestFold.backtest_id == backtest_id,
             ),
         )
+
         fold_ids = tuple(row.id for row in fold_result)
 
         if fold_ids:
@@ -138,12 +201,16 @@ async def cleanup(
     )
     await db_session.execute(
         delete(MarketBar).where(
-            MarketBar.instrument_id == instrument_id,
+            MarketBar.instrument_id.in_(
+                (instrument_id, benchmark_id),
+            ),
         ),
     )
     await db_session.execute(
         delete(Instrument).where(
-            Instrument.id == instrument_id,
+            Instrument.id.in_(
+                (instrument_id, benchmark_id),
+            ),
         ),
     )
 
@@ -155,7 +222,7 @@ async def test_execute_server_side_backtest_resolves_database_inputs(
     client,
     db_session,
 ):
-    instrument, signal = await create_fixture_data(db_session)
+    instrument, benchmark, signal = await create_fixture_data(db_session)
     backtest_id = None
 
     try:
@@ -174,6 +241,7 @@ async def test_execute_server_side_backtest_resolves_database_inputs(
                         "end_at": "2099-03-01T00:00:00Z",
                     },
                 ],
+                "benchmark_instrument_id": str(benchmark.id),
             },
         )
 
@@ -185,8 +253,10 @@ async def test_execute_server_side_backtest_resolves_database_inputs(
         assert payload["run"]["valid"] is True
         assert payload["run"]["evaluation_count"] == 1
         assert payload["run"]["valid_evaluation_count"] == 1
+
         assert payload["report"]["total_evaluations"] == 1
         assert payload["report"]["average_forward_return_pct"] == 5.0
+        assert payload["report"]["average_relative_return_pct"] == 4.0
         assert payload["report"]["directional_accuracy"] == 1.0
 
         persisted_evaluations = await db_session.execute(
@@ -199,9 +269,50 @@ async def test_execute_server_side_backtest_resolves_database_inputs(
         assert len(evaluation_rows) == 1
         assert evaluation_rows[0].instrument_id == instrument.id
         assert evaluation_rows[0].forward_return_pct == 5.0
+        assert evaluation_rows[0].benchmark_return_pct == 1.0
+        assert evaluation_rows[0].relative_return_pct == 4.0
     finally:
         await cleanup(
             db_session,
             instrument.id,
+            benchmark.id,
             backtest_id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_execute_server_side_backtest_rejects_unknown_benchmark(
+    client,
+    db_session,
+):
+    instrument, benchmark, _ = await create_fixture_data(db_session)
+
+    try:
+        response = await client.post(
+            "/backtests/execute-server-side",
+            json={
+                "training_periods": [
+                    {
+                        "start_at": "2099-01-01T00:00:00Z",
+                        "end_at": "2099-02-01T00:00:00Z",
+                    },
+                ],
+                "evaluation_periods": [
+                    {
+                        "start_at": "2099-02-01T00:00:00Z",
+                        "end_at": "2099-03-01T00:00:00Z",
+                    },
+                ],
+                "benchmark_instrument_id": str(uuid4()),
+            },
+        )
+
+        assert response.status_code == 422
+        assert "Benchmark instrument" in response.json()["detail"]
+    finally:
+        await cleanup(
+            db_session,
+            instrument.id,
+            benchmark.id,
+            None,
         )

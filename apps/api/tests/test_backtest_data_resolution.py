@@ -323,3 +323,187 @@ async def test_requires_entry_bar_strictly_after_signal(db_session):
         )
     finally:
         await cleanup(db_session, instrument.id)
+
+
+@pytest.mark.asyncio
+async def test_resolves_benchmark_return(db_session):
+    target_instrument = await create_instrument(db_session)
+
+    benchmark_instrument = await create_instrument(db_session)
+
+    try:
+        await create_signal(
+            db_session,
+            instrument_id=target_instrument.id,
+            created_at=datetime(
+                2099,
+                4,
+                5,
+                10,
+                0,
+                tzinfo=UTC,
+            ),
+            time_horizon="short_term",
+        )
+
+        await create_bar(
+            db_session,
+            instrument_id=target_instrument.id,
+            timestamp=datetime(
+                2099,
+                4,
+                5,
+                10,
+                1,
+                tzinfo=UTC,
+            ),
+            close="100",
+        )
+        await create_bar(
+            db_session,
+            instrument_id=target_instrument.id,
+            timestamp=datetime(
+                2099,
+                4,
+                6,
+                10,
+                0,
+                tzinfo=UTC,
+            ),
+            close="110",
+        )
+
+        await create_bar(
+            db_session,
+            instrument_id=benchmark_instrument.id,
+            timestamp=datetime(
+                2099,
+                4,
+                5,
+                10,
+                1,
+                tzinfo=UTC,
+            ),
+            close="200",
+        )
+        await create_bar(
+            db_session,
+            instrument_id=benchmark_instrument.id,
+            timestamp=datetime(
+                2099,
+                4,
+                6,
+                10,
+                0,
+                tzinfo=UTC,
+            ),
+            close="204",
+        )
+
+        result = await BacktestDataResolver().resolve(
+            db_session,
+            evaluation_periods=(
+                BacktestPeriod(
+                    start_at=datetime(
+                        2099,
+                        4,
+                        1,
+                        tzinfo=UTC,
+                    ),
+                    end_at=datetime(
+                        2099,
+                        5,
+                        1,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ),
+            benchmark_instrument_id=benchmark_instrument.id,
+        )
+
+        assert len(result.observations) == 1
+        observation = result.observations[0]
+
+        assert observation.forward_return_pct == 10.0
+        assert observation.benchmark_return_pct == 2.0
+        assert observation.horizon == BacktestHorizon.ONE_DAY
+    finally:
+        await cleanup(db_session, target_instrument.id)
+        await cleanup(db_session, benchmark_instrument.id)
+
+
+@pytest.mark.asyncio
+async def test_missing_benchmark_bars_leave_benchmark_return_unavailable(
+    db_session,
+):
+    target_instrument = await create_instrument(db_session)
+    benchmark_instrument = await create_instrument(db_session)
+
+    try:
+        await create_signal(
+            db_session,
+            instrument_id=target_instrument.id,
+            created_at=datetime(
+                2099,
+                5,
+                5,
+                10,
+                0,
+                tzinfo=UTC,
+            ),
+            time_horizon="short_term",
+        )
+
+        await create_bar(
+            db_session,
+            instrument_id=target_instrument.id,
+            timestamp=datetime(
+                2099,
+                5,
+                5,
+                10,
+                1,
+                tzinfo=UTC,
+            ),
+            close="100",
+        )
+        await create_bar(
+            db_session,
+            instrument_id=target_instrument.id,
+            timestamp=datetime(
+                2099,
+                5,
+                6,
+                10,
+                0,
+                tzinfo=UTC,
+            ),
+            close="105",
+        )
+
+        result = await BacktestDataResolver().resolve(
+            db_session,
+            evaluation_periods=(
+                BacktestPeriod(
+                    start_at=datetime(
+                        2099,
+                        5,
+                        1,
+                        tzinfo=UTC,
+                    ),
+                    end_at=datetime(
+                        2099,
+                        6,
+                        1,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ),
+            benchmark_instrument_id=benchmark_instrument.id,
+        )
+
+        assert len(result.observations) == 1
+        assert result.observations[0].benchmark_return_pct is None
+    finally:
+        await cleanup(db_session, target_instrument.id)
+        await cleanup(db_session, benchmark_instrument.id)
