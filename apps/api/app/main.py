@@ -5,6 +5,7 @@ from app.api.auth import router as auth_router
 from app.api.market_data import router as market_data_router
 from app.backtesting.api import router as backtesting_router
 from app.core.config import get_settings
+from app.signals.api import router as signals_router
 
 settings = get_settings()
 
@@ -28,6 +29,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(market_data_router)
 app.include_router(backtesting_router)
+app.include_router(signals_router)
 
 
 @app.get("/health", tags=["system"])
