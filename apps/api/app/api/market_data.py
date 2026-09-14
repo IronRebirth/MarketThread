@@ -12,10 +12,9 @@ from app.market_data.models import (
     MarketDataIngestionResult,
 )
 from app.market_data.persistence import MarketDataPersistenceService
-from app.market_data.providers.errors import (
-    MarketDataProviderError,
-)
+from app.market_data.providers.errors import MarketDataProviderError
 from app.market_data.providers.factory import create_market_data_provider
+from app.market_data.repository import MarketDataRepository
 from app.market_data.service import MarketDataService
 
 router = APIRouter(
@@ -24,20 +23,25 @@ router = APIRouter(
 )
 
 
-def get_market_data_service() -> MarketDataService:
-    """Create the market-data service for the current application."""
+def get_market_data_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MarketDataService:
+    """Create the database-first market-data service."""
 
     settings = get_settings()
+    repository = MarketDataRepository(session)
+
+    provider = None
 
     try:
         provider = create_market_data_provider(settings)
-    except MarketDataProviderError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Market-data provider is not configured.",
-        ) from exc
+    except MarketDataProviderError:
+        provider = None
 
-    return MarketDataService(provider)
+    return MarketDataService(
+        provider=provider,
+        repository=repository,
+    )
 
 
 def get_market_data_ingestion_service(
@@ -82,9 +86,15 @@ async def get_instrument(
     symbol: str,
     service: MarketDataServiceDependency,
 ) -> Instrument:
-    """Return a normalized instrument by symbol."""
+    """Return an instrument using database-first retrieval."""
 
-    instrument = await service.get_instrument(symbol)
+    try:
+        instrument = await service.get_instrument(symbol)
+    except MarketDataProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Market-data is unavailable.",
+        ) from exc
 
     if instrument is None:
         raise HTTPException(
