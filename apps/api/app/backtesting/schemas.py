@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from .engine import BacktestSignal
+from .models import BacktestPeriod, TimeAwareObservation
 from .report import (
     BacktestPerformanceReport,
     PerformanceBreakdown,
@@ -22,6 +24,27 @@ class BacktestRunCreateRequest(BaseModel):
     )
 
 
+class BacktestExecutionRequest(BaseModel):
+    backtest_id: UUID | None = Field(
+        default=None,
+        description="Optional deterministic identifier for the backtest run.",
+    )
+    training_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+        description="Chronological training periods.",
+    )
+    evaluation_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+        description="Chronological evaluation periods.",
+    )
+    signals: tuple[BacktestSignal, ...] = Field(
+        default=(),
+    )
+    observations: tuple[TimeAwareObservation, ...] = Field(
+        default=(),
+    )
+
+
 class BacktestRunResponse(BaseModel):
     backtest_id: UUID
     valid: bool
@@ -30,6 +53,11 @@ class BacktestRunResponse(BaseModel):
     rejected_evaluation_count: int
     created_at: datetime
     completed_at: datetime
+
+
+class BacktestExecutionResponse(BaseModel):
+    run: BacktestRunResponse
+    report: "BacktestPerformanceReportResponse"
 
 
 class PerformanceBreakdownSummaryResponse(BaseModel):

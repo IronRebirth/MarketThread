@@ -25,8 +25,8 @@ class WalkForwardBacktestAnalyzer:
         return tuple(
             WalkForwardFold(
                 fold_number=index,
-                training_period=training_period,
-                evaluation_period=evaluation_period,
+                training_periods=(training_period,),
+                evaluation_periods=(evaluation_period,),
             )
             for index, (training_period, evaluation_period) in enumerate(
                 zip(

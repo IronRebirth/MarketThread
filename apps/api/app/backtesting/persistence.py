@@ -85,6 +85,25 @@ class BacktestPersistenceService:
 
         return run
 
+    async def get_run(
+        self,
+        session: AsyncSession,
+        backtest_id: UUID,
+    ) -> BacktestRun:
+        """Retrieve persisted run metadata by ID."""
+
+        run = await session.get(
+            BacktestRun,
+            backtest_id,
+        )
+
+        if run is None:
+            raise BacktestRunNotFoundError(
+                f"Backtest run {backtest_id} was not found.",
+            )
+
+        return run
+
     async def get_execution(
         self,
         session: AsyncSession,
