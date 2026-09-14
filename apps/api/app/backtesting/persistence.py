@@ -64,6 +64,9 @@ class BacktestPersistenceService:
 
         session.add(run)
 
+        # Folds reference the run by foreign key, so persist the run first.
+        await session.flush()
+
         for fold_result in execution.fold_results:
             fold = self._build_fold(
                 backtest_id=execution.backtest_id,
@@ -71,6 +74,10 @@ class BacktestPersistenceService:
             )
 
             session.add(fold)
+
+            # Evaluations reference the fold by foreign key, so persist the
+            # fold before inserting its evaluations.
+            await session.flush()
 
             for evaluation in fold_result.evaluations:
                 session.add(

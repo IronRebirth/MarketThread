@@ -18,6 +18,7 @@ from .persistence import (
     BacktestRunNotFoundError,
 )
 from .report_service import BacktestPerformanceReportService
+from .resolver import BacktestDataResolutionError, BacktestDataResolver
 from .schemas import (
     BacktestExecutionRequest,
     BacktestExecutionResponse,
@@ -25,6 +26,7 @@ from .schemas import (
     BacktestPerformanceReportResponse,
     BacktestRunCreateRequest,
     BacktestRunResponse,
+    ServerSideBacktestExecutionRequest,
     to_response,
     to_run_response,
 )
@@ -41,6 +43,7 @@ _persistence_service = BacktestPersistenceService()
 _orchestrator = BacktestExecutionOrchestrator(
     persistence_service=_persistence_service,
 )
+_data_resolver = BacktestDataResolver()
 
 
 def _validate_execution(
@@ -79,6 +82,74 @@ async def execute_backtest(
             observations=request.observations,
             backtest_id=request.backtest_id,
         )
+    except BacktestExecutionConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except BacktestRunAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    report = _report_service.build_report(execution)
+
+    persisted_run = await _persistence_service.get_run(
+        session,
+        execution.backtest_id,
+    )
+
+    return BacktestExecutionResponse(
+        run=to_run_response(persisted_run),
+        report=to_response(report),
+    )
+
+
+@router.post(
+    "/execute-server-side",
+    response_model=BacktestExecutionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Execute a database-backed backtest",
+    description=(
+        "Resolves persisted market signals and historical market bars on the "
+        "server, applies the existing walk-forward temporal controls, "
+        "persists the completed run, and returns its performance report."
+    ),
+)
+async def execute_server_side_backtest(
+    request: ServerSideBacktestExecutionRequest,
+    session: DatabaseSession,
+) -> BacktestExecutionResponse:
+    try:
+        resolution = await _data_resolver.resolve(
+            session,
+            evaluation_periods=request.evaluation_periods,
+        )
+
+        execution = await _orchestrator.execute_and_persist(
+            session=session,
+            training_periods=request.training_periods,
+            evaluation_periods=request.evaluation_periods,
+            signals=resolution.signals,
+            observations=resolution.observations,
+            backtest_id=request.backtest_id,
+        )
+
+        if resolution.notes:
+            run = await _persistence_service.get_run(
+                session,
+                execution.backtest_id,
+            )
+            run.notes = list(execution.notes + resolution.notes)
+            await session.commit()
+            await session.refresh(run)
+
+    except BacktestDataResolutionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
     except BacktestExecutionConfigurationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
