@@ -60,6 +60,13 @@ class ServerSideBacktestExecutionRequest(BaseModel):
         min_length=1,
         description="Chronological evaluation periods.",
     )
+    benchmark_instrument_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Optional persisted instrument used as the benchmark for "
+            "relative-return evaluation."
+        ),
+    )
 
 
 class BacktestRunResponse(BaseModel):
