@@ -45,6 +45,23 @@ class BacktestExecutionRequest(BaseModel):
     )
 
 
+class ServerSideBacktestExecutionRequest(BaseModel):
+    """Configuration for a database-backed historical backtest."""
+
+    backtest_id: UUID | None = Field(
+        default=None,
+        description="Optional deterministic identifier for the backtest run.",
+    )
+    training_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+        description="Chronological training periods.",
+    )
+    evaluation_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+        description="Chronological evaluation periods.",
+    )
+
+
 class BacktestRunResponse(BaseModel):
     backtest_id: UUID
     valid: bool
