@@ -46,3 +46,23 @@ class Bar(BaseModel):
     close: Decimal
     volume: Decimal | None = None
     source: str = Field(min_length=1, max_length=64)
+
+
+class MarketDataIngestionRequest(BaseModel):
+    """Request to ingest market data for an instrument."""
+
+    start: datetime
+    end: datetime
+    include_quote: bool = True
+
+
+class MarketDataIngestionResult(BaseModel):
+    """Summary of a completed market-data ingestion operation."""
+
+    instrument_id: UUID
+    symbol: str
+    exchange: str
+    bars_received: int
+    bars_persisted: int
+    quote_received: bool
+    quote_persisted: bool
