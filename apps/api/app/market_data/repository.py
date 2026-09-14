@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
@@ -94,3 +95,35 @@ class MarketDataRepository:
         )
 
         return tuple(result.scalars().all())
+
+    async def get_historical_bars_for_instruments(
+        self,
+        instrument_ids: Sequence[UUID],
+        start_after: datetime,
+        end_at: datetime,
+    ) -> dict[UUID, list[MarketBar]]:
+        """Return ordered persisted bars grouped by instrument."""
+
+        if not instrument_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(MarketBar)
+            .where(
+                MarketBar.instrument_id.in_(instrument_ids),
+                MarketBar.timestamp > start_after,
+                MarketBar.timestamp <= end_at,
+            )
+            .order_by(
+                MarketBar.instrument_id,
+                MarketBar.timestamp,
+                MarketBar.id,
+            ),
+        )
+
+        grouped: dict[UUID, list[MarketBar]] = defaultdict(list)
+
+        for bar in result.scalars().all():
+            grouped[bar.instrument_id].append(bar)
+
+        return grouped
