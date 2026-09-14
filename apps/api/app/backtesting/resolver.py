@@ -1,5 +1,4 @@
 from bisect import bisect_left, bisect_right
-from collections import defaultdict
 from datetime import timedelta
 from uuid import UUID
 
@@ -17,6 +16,7 @@ from app.evaluation.models import (
     EvaluationRecommendationState,
     EvaluationSignalStrength,
 )
+from app.market_data.repository import MarketDataRepository
 
 
 class BacktestDataResolutionError(ValueError):
@@ -54,6 +54,12 @@ class BacktestDataResolver:
         "reduce": EvaluationRecommendationState.REDUCE,
         "insufficient_evidence": (EvaluationRecommendationState.INSUFFICIENT_EVIDENCE),
     }
+
+    def __init__(
+        self,
+        market_data_repository: MarketDataRepository | None = None,
+    ) -> None:
+        self.market_data_repository = market_data_repository
 
     async def resolve(
         self,
@@ -216,6 +222,8 @@ class BacktestDataResolver:
         *,
         benchmark_instrument_id: UUID | None,
     ) -> tuple[TimeAwareObservation, ...]:
+        repository = self._get_market_data_repository(session)
+
         target_instrument_ids = tuple(
             {signal.instrument_id for signal in signals},
         )
@@ -223,12 +231,14 @@ class BacktestDataResolver:
         minimum_signal_time = min(signal.created_at for signal in signals)
 
         maximum_target_time = max(
-            signal.created_at + timedelta(days=self._horizon_for_signal(signal).days)
+            signal.created_at
+            + timedelta(
+                days=self._horizon_for_signal(signal).days,
+            )
             for signal in signals
         )
 
-        target_bars = await self._load_bars(
-            session,
+        target_bars = await repository.get_historical_bars_for_instruments(
             instrument_ids=target_instrument_ids,
             start_after=minimum_signal_time,
             end_at=maximum_target_time,
@@ -237,8 +247,7 @@ class BacktestDataResolver:
         benchmark_bars: dict[UUID, list[MarketBar]] = {}
 
         if benchmark_instrument_id is not None:
-            benchmark_bars = await self._load_bars(
-                session,
+            benchmark_bars = await repository.get_historical_bars_for_instruments(
                 instrument_ids=(benchmark_instrument_id,),
                 start_after=minimum_signal_time,
                 end_at=maximum_target_time,
@@ -274,34 +283,13 @@ class BacktestDataResolver:
 
         return tuple(observations)
 
-    @staticmethod
-    async def _load_bars(
+    def _get_market_data_repository(
+        self,
         session: AsyncSession,
-        *,
-        instrument_ids: tuple[UUID, ...],
-        start_after,
-        end_at,
-    ) -> dict[UUID, list[MarketBar]]:
-        result = await session.execute(
-            select(MarketBar)
-            .where(
-                MarketBar.instrument_id.in_(instrument_ids),
-                MarketBar.timestamp > start_after,
-                MarketBar.timestamp <= end_at,
-            )
-            .order_by(
-                MarketBar.instrument_id,
-                MarketBar.timestamp,
-                MarketBar.id,
-            ),
-        )
+    ) -> MarketDataRepository:
+        """Return the configured repository or create a session-bound one."""
 
-        grouped: dict[UUID, list[MarketBar]] = defaultdict(list)
-
-        for bar in result.scalars().all():
-            grouped[bar.instrument_id].append(bar)
-
-        return grouped
+        return self.market_data_repository or MarketDataRepository(session)
 
     @classmethod
     def _map_horizon(
