@@ -18,16 +18,6 @@ export type BacktestPerformanceSummary = {
   quality_state: BacktestQualityState | null;
 };
 
-export type BacktestQualityResponse = {
-  state: BacktestQualityState;
-  evaluation_count: number;
-  expected_count: number;
-  coverage_ratio: number;
-  minimum_evaluations: number;
-  warnings: BacktestQualityWarning[];
-  notes: string[];
-};
-
 export type BacktestPerformanceReport = {
   backtest_id: string;
   total_evaluations: number;
@@ -39,11 +29,9 @@ export type BacktestPerformanceReport = {
   positive_outcome_rate: number | null;
   quality_state: BacktestQualityState;
   quality_evaluation_count: number;
-  quality_expected_count: number;
-  quality_coverage_ratio: number;
-  quality_minimum_evaluations: number;
+  quality_expected_count: number | null;
+  quality_coverage_ratio: number | null;
   quality_warnings: BacktestQualityWarning[];
-  quality_notes: string[];
   by_horizon: {
     summaries: BacktestPerformanceSummary[];
   };
@@ -58,24 +46,28 @@ export type BacktestPerformanceReport = {
 
 export type BacktestExecutionPayload = {
   backtest_id: string;
-  evaluations?: unknown[];
   fold_results?: unknown[];
+};
+
+export type BacktestRunResponse = {
+  backtest_id: string;
+  valid: boolean;
+  evaluation_count: number;
+  valid_evaluation_count: number;
+  rejected_evaluation_count: number;
+  created_at: string;
+  completed_at: string;
 };
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-export async function fetchBacktestPerformanceReport(
-  execution: BacktestExecutionPayload,
-): Promise<BacktestPerformanceReport> {
-  const response = await fetch(`${API_BASE_URL}/backtests/performance-report`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      execution,
-    }),
+async function getJson<T>(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(input, {
+    ...init,
     cache: "no-store",
   });
 
@@ -83,9 +75,57 @@ export async function fetchBacktestPerformanceReport(
     const detail = await response.text();
 
     throw new Error(
-      detail || `Backtest report request failed (${response.status})`,
+      detail || `Backtest API request failed (${response.status})`,
     );
   }
 
-  return (await response.json()) as BacktestPerformanceReport;
+  return (await response.json()) as T;
+}
+
+export async function fetchBacktestPerformanceReport(
+  execution: BacktestExecutionPayload,
+): Promise<BacktestPerformanceReport> {
+  return getJson<BacktestPerformanceReport>(
+    `${API_BASE_URL}/backtests/performance-report`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        execution,
+      }),
+    },
+  );
+}
+
+export async function fetchLatestBacktestPerformanceReport(): Promise<BacktestPerformanceReport> {
+  return getJson<BacktestPerformanceReport>(
+    `${API_BASE_URL}/backtests/runs/latest/performance-report`,
+  );
+}
+
+export async function fetchBacktestPerformanceReportById(
+  backtestId: string,
+): Promise<BacktestPerformanceReport> {
+  return getJson<BacktestPerformanceReport>(
+    `${API_BASE_URL}/backtests/runs/${backtestId}/performance-report`,
+  );
+}
+
+export async function persistBacktestRun(
+  execution: BacktestExecutionPayload,
+): Promise<BacktestRunResponse> {
+  return getJson<BacktestRunResponse>(
+    `${API_BASE_URL}/backtests/runs`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        execution,
+      }),
+    },
+  );
 }

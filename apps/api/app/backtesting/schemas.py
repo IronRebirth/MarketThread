@@ -1,3 +1,6 @@
+from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from .report import (
@@ -11,6 +14,22 @@ class BacktestPerformanceReportRequest(BaseModel):
     execution: dict = Field(
         description="Serialized BacktestExecutionResult.",
     )
+
+
+class BacktestRunCreateRequest(BaseModel):
+    execution: dict = Field(
+        description="Serialized completed BacktestExecutionResult.",
+    )
+
+
+class BacktestRunResponse(BaseModel):
+    backtest_id: UUID
+    valid: bool
+    evaluation_count: int
+    valid_evaluation_count: int
+    rejected_evaluation_count: int
+    created_at: datetime
+    completed_at: datetime
 
 
 class PerformanceBreakdownSummaryResponse(BaseModel):
@@ -49,6 +68,20 @@ class BacktestPerformanceReportResponse(BaseModel):
     by_recommendation_state: PerformanceBreakdownResponse
 
     notes: tuple[str, ...]
+
+
+def to_run_response(
+    run: object,
+) -> BacktestRunResponse:
+    return BacktestRunResponse(
+        backtest_id=run.id,
+        valid=run.valid,
+        evaluation_count=run.evaluation_count,
+        valid_evaluation_count=run.valid_evaluation_count,
+        rejected_evaluation_count=run.rejected_evaluation_count,
+        created_at=run.created_at,
+        completed_at=run.completed_at,
+    )
 
 
 def to_response(
