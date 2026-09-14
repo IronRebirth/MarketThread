@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { fetchBacktestPerformanceReport } from "../../lib/backtest-api";
-import { developmentBacktestExecution } from "../../lib/backtest-preview";
+import {
+  fetchLatestBacktestPerformanceReport,
+  type BacktestPerformanceReport,
+} from "../../lib/backtest-api";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 
-type Report = Awaited<
-  ReturnType<typeof fetchBacktestPerformanceReport>
->;
+type Report = BacktestPerformanceReport;
 
 function QualityBadge({ state }: { state: string }) {
   const variant =
@@ -67,9 +67,7 @@ export function BacktestDashboard() {
     setErrorMessage(null);
 
     try {
-      const nextReport = await fetchBacktestPerformanceReport(
-        developmentBacktestExecution,
-      );
+      const nextReport = await fetchLatestBacktestPerformanceReport();
 
       setReport(nextReport);
     } catch (error) {
@@ -409,11 +407,6 @@ export function BacktestDashboard() {
             </div>
           </Card>
 
-          <p className="text-xs text-text-muted">
-            Development note: this dashboard currently sends a typed
-            development execution fixture to the live report API. A
-            persisted backtest-run endpoint will replace that fixture.
-          </p>
         </>
       )}
     </div>
