@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.market_data import router as market_data_router
+from app.backtesting.api import router as backtesting_router
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -15,7 +16,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,6 +27,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(market_data_router)
+app.include_router(backtesting_router)
 
 
 @app.get("/health", tags=["system"])
