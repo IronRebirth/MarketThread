@@ -5,7 +5,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.db.models.instrument import Instrument as InstrumentRecord
+from app.db.models.market_bar import MarketBar
+from app.db.models.market_data import MarketQuote
 from app.market_data.models import Bar, Instrument, Quote
+from app.market_data.repository import MarketDataRepository
 from app.market_data.service import MarketDataService
 
 
@@ -138,3 +142,158 @@ async def test_get_historical_bars_rejects_invalid_range() -> None:
             timestamp,
             timestamp,
         )
+
+
+@pytest.mark.asyncio
+async def test_database_is_authoritative_before_provider(
+    db_session,
+) -> None:
+    provider = FakeMarketDataProvider()
+
+    symbol = f"DB{uuid4().hex[:8].upper()}"
+
+    instrument = InstrumentRecord(
+        symbol=symbol,
+        name="Persisted Instrument",
+        exchange="TEST",
+        asset_class="equity",
+        currency="USD",
+        is_active=True,
+    )
+
+    db_session.add(instrument)
+    await db_session.commit()
+    await db_session.refresh(instrument)
+
+    repository = MarketDataRepository(db_session)
+    service = MarketDataService(
+        provider=provider,
+        repository=repository,
+    )
+
+    result = await service.get_instrument(symbol.lower())
+
+    assert result is not None
+    assert result.id == instrument.id
+    assert result.name == "Persisted Instrument"
+
+
+@pytest.mark.asyncio
+async def test_database_quote_is_used_before_provider(
+    db_session,
+) -> None:
+    provider = FakeMarketDataProvider()
+
+    instrument = InstrumentRecord(
+        symbol=f"QDB{uuid4().hex[:8].upper()}",
+        name="Persisted Quote Instrument",
+        exchange="TEST",
+        asset_class="equity",
+        currency="USD",
+        is_active=True,
+    )
+
+    db_session.add(instrument)
+    await db_session.commit()
+    await db_session.refresh(instrument)
+
+    timestamp = datetime(
+        2026,
+        1,
+        10,
+        12,
+        tzinfo=UTC,
+    )
+
+    db_session.add(
+        MarketQuote(
+            instrument_id=instrument.id,
+            timestamp=timestamp,
+            price=Decimal("321.45"),
+            bid=Decimal("321.40"),
+            ask=Decimal("321.50"),
+            volume=Decimal("2500"),
+            source="persisted-test",
+        ),
+    )
+    await db_session.commit()
+
+    repository = MarketDataRepository(db_session)
+    service = MarketDataService(
+        provider=provider,
+        repository=repository,
+    )
+
+    result = await service.get_latest_quote(instrument.id)
+
+    assert result is not None
+    assert result.price == Decimal("321.45")
+    assert result.source == "persisted-test"
+
+
+@pytest.mark.asyncio
+async def test_database_bars_are_used_before_provider(
+    db_session,
+) -> None:
+    provider = FakeMarketDataProvider()
+
+    instrument = InstrumentRecord(
+        symbol=f"BDB{uuid4().hex[:8].upper()}",
+        name="Persisted Bar Instrument",
+        exchange="TEST",
+        asset_class="equity",
+        currency="USD",
+        is_active=True,
+    )
+
+    db_session.add(instrument)
+    await db_session.commit()
+    await db_session.refresh(instrument)
+
+    start = datetime(
+        2026,
+        1,
+        1,
+        tzinfo=UTC,
+    )
+    end = datetime(
+        2026,
+        1,
+        3,
+        tzinfo=UTC,
+    )
+
+    db_session.add(
+        MarketBar(
+            instrument_id=instrument.id,
+            timestamp=datetime(
+                2026,
+                1,
+                2,
+                tzinfo=UTC,
+            ),
+            open=Decimal("300"),
+            high=Decimal("310"),
+            low=Decimal("295"),
+            close=Decimal("307"),
+            volume=Decimal("5000"),
+            source="persisted-test",
+        ),
+    )
+    await db_session.commit()
+
+    repository = MarketDataRepository(db_session)
+    service = MarketDataService(
+        provider=provider,
+        repository=repository,
+    )
+
+    result = await service.get_historical_bars(
+        instrument.id,
+        start,
+        end,
+    )
+
+    assert len(result) == 1
+    assert result[0].close == Decimal("307")
+    assert result[0].source == "persisted-test"
