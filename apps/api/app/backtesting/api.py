@@ -8,6 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 
 from .engine import BacktestExecutionResult
+from .orchestration import (
+    BacktestExecutionConfigurationError,
+    BacktestExecutionOrchestrator,
+)
 from .persistence import (
     BacktestPersistenceService,
     BacktestRunAlreadyExistsError,
@@ -15,6 +19,8 @@ from .persistence import (
 )
 from .report_service import BacktestPerformanceReportService
 from .schemas import (
+    BacktestExecutionRequest,
+    BacktestExecutionResponse,
     BacktestPerformanceReportRequest,
     BacktestPerformanceReportResponse,
     BacktestRunCreateRequest,
@@ -32,6 +38,9 @@ DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 _report_service = BacktestPerformanceReportService()
 _persistence_service = BacktestPersistenceService()
+_orchestrator = BacktestExecutionOrchestrator(
+    persistence_service=_persistence_service,
+)
 
 
 def _validate_execution(
@@ -41,9 +50,57 @@ def _validate_execution(
         return BacktestExecutionResult.model_validate(payload)
     except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=exc.errors(),
         ) from exc
+
+
+@router.post(
+    "/execute",
+    response_model=BacktestExecutionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Execute and persist a backtest",
+    description=(
+        "Constructs walk-forward folds, validates their chronology, executes "
+        "the supplied signals against historical observations, persists the "
+        "completed run, and returns its performance report."
+    ),
+)
+async def execute_backtest(
+    request: BacktestExecutionRequest,
+    session: DatabaseSession,
+) -> BacktestExecutionResponse:
+    try:
+        execution = await _orchestrator.execute_and_persist(
+            session=session,
+            training_periods=request.training_periods,
+            evaluation_periods=request.evaluation_periods,
+            signals=request.signals,
+            observations=request.observations,
+            backtest_id=request.backtest_id,
+        )
+    except BacktestExecutionConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except BacktestRunAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    report = _report_service.build_report(execution)
+
+    persisted_run = await _persistence_service.get_run(
+        session,
+        execution.backtest_id,
+    )
+
+    return BacktestExecutionResponse(
+        run=to_run_response(persisted_run),
+        report=to_response(report),
+    )
 
 
 @router.post(
