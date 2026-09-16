@@ -13,6 +13,7 @@ from app.market_data.models import (
     Instrument,
     MarketDataIngestionRequest,
     MarketDataIngestionResult,
+    MarketDataProviderHealth,
     Quote,
     QuoteFreshness,
 )
@@ -108,6 +109,24 @@ async def _resolve_instrument(
 
 
 @router.get(
+    "/provider/health",
+    response_model=MarketDataProviderHealth,
+)
+async def get_provider_health(
+    service: MarketDataServiceDependency,
+) -> MarketDataProviderHealth:
+    """Return the configured market-data provider health status."""
+
+    try:
+        return await service.check_provider_health()
+    except MarketDataProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Market-data provider is not configured.",
+        ) from exc
+
+
+@router.get(
     "/instruments/{symbol}",
     response_model=Instrument,
 )
@@ -161,11 +180,11 @@ async def get_latest_quote(
 )
 async def get_quote_freshness(
     symbol: str,
+    service: MarketDataServiceDependency,
     maximum_age_seconds: Annotated[
         int,
         Query(gt=0, le=86400),
     ] = 900,
-    service: MarketDataServiceDependency = None,
 ) -> QuoteFreshness:
     """Assess the freshness of the latest available quote."""
 
@@ -240,6 +259,7 @@ async def get_historical_bars_quality(
     symbol: str,
     start: datetime,
     end: datetime,
+    service: MarketDataServiceDependency,
     expected_interval_seconds: Annotated[
         int,
         Query(gt=0, le=31536000),
@@ -248,7 +268,6 @@ async def get_historical_bars_quality(
         float,
         Query(gt=0, le=1),
     ] = 0.95,
-    service: MarketDataServiceDependency = None,
 ) -> HistoricalDataCompleteness:
     """Assess historical bar coverage for an explicit interval."""
 

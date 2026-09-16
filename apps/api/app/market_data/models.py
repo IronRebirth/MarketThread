@@ -81,6 +81,18 @@ class HistoricalDataCompleteness(BaseModel):
     sources: tuple[str, ...] = ()
 
 
+class MarketDataProviderHealth(BaseModel):
+    """Operational health status for a market-data provider."""
+
+    model_config = ConfigDict(frozen=True)
+
+    provider: str = Field(min_length=1, max_length=64)
+    status: Literal["healthy", "degraded", "unavailable"]
+    checked_at: datetime
+    latency_ms: float | None
+    detail: str | None = None
+
+
 class MarketDataIngestionRequest(BaseModel):
     """Request to ingest market data for an instrument."""
 

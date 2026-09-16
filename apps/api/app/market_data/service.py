@@ -6,6 +6,7 @@ from app.market_data.models import (
     Bar,
     HistoricalDataCompleteness,
     Instrument,
+    MarketDataProviderHealth,
     Quote,
     QuoteFreshness,
 )
@@ -174,6 +175,13 @@ class MarketDataService:
             expected_interval=expected_interval,
             minimum_coverage=minimum_coverage,
         )
+
+    async def check_provider_health(self) -> MarketDataProviderHealth:
+        """Return the health of the configured external market-data provider."""
+
+        provider = self._require_provider()
+
+        return await provider.health_check()
 
     def _require_provider(self) -> MarketDataProvider:
         """Return the provider or raise a configuration error."""
