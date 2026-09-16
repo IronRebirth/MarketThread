@@ -6,6 +6,10 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.provenance.persistence import (
+    ProvenanceNotFoundError,
+    ProvenancePersistenceService,
+)
 
 from .engine import BacktestExecutionResult
 from .orchestration import (
@@ -40,8 +44,10 @@ DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 _report_service = BacktestPerformanceReportService()
 _persistence_service = BacktestPersistenceService()
+_provenance_persistence_service = ProvenancePersistenceService()
 _orchestrator = BacktestExecutionOrchestrator(
     persistence_service=_persistence_service,
+    provenance_persistence_service=_provenance_persistence_service,
 )
 _data_resolver = BacktestDataResolver()
 
@@ -66,7 +72,7 @@ def _validate_execution(
     description=(
         "Constructs walk-forward folds, validates their chronology, executes "
         "the supplied signals against historical observations, persists the "
-        "completed run, and returns its performance report."
+        "completed run and its provenance, and returns its performance report."
     ),
 )
 async def execute_backtest(
@@ -114,7 +120,8 @@ async def execute_backtest(
     description=(
         "Resolves persisted market signals and historical market bars on the "
         "server, applies the existing walk-forward temporal controls, "
-        "persists the completed run, and returns its performance report."
+        "persists the completed run and its provenance, and returns its "
+        "performance report."
     ),
 )
 async def execute_server_side_backtest(
@@ -274,3 +281,27 @@ async def get_backtest_report(
     report = _report_service.build_report(execution)
 
     return to_response(report)
+
+
+@router.get(
+    "/runs/{backtest_id}/provenance",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Get persisted backtest provenance",
+)
+async def get_backtest_provenance(
+    backtest_id: UUID,
+    session: DatabaseSession,
+) -> dict:
+    try:
+        record = await _provenance_persistence_service.get(
+            session,
+            backtest_id,
+        )
+    except ProvenanceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return record.model_dump(mode="json")

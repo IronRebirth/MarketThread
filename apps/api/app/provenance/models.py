@@ -15,6 +15,7 @@ class AnalysisStage(StrEnum):
     SIGNAL_INTELLIGENCE = "signal_intelligence"
     RISK_CONFIDENCE = "risk_confidence"
     RECOMMENDATION = "recommendation"
+    BACKTESTING = "backtesting"
 
 
 class EvidenceReference(BaseModel):
