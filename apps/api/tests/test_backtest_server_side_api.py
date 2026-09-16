@@ -43,6 +43,7 @@ async def create_fixture_data(db_session):
         name="Server Side Test Instrument",
         symbol_prefix="TST",
     )
+
     benchmark = await create_instrument(
         db_session,
         name="Server Side Benchmark Instrument",
@@ -188,6 +189,7 @@ async def cleanup(
                 BacktestFold.backtest_id == backtest_id,
             ),
         )
+
         await db_session.execute(
             delete(BacktestRun).where(
                 BacktestRun.id == backtest_id,
@@ -199,6 +201,7 @@ async def cleanup(
             SignalRecord.instrument_id == instrument_id,
         ),
     )
+
     await db_session.execute(
         delete(MarketBar).where(
             MarketBar.instrument_id.in_(
@@ -206,6 +209,7 @@ async def cleanup(
             ),
         ),
     )
+
     await db_session.execute(
         delete(Instrument).where(
             Instrument.id.in_(
@@ -222,7 +226,9 @@ async def test_execute_server_side_backtest_resolves_database_inputs(
     client,
     db_session,
 ):
-    instrument, benchmark, signal = await create_fixture_data(db_session)
+    instrument, benchmark, signal = await create_fixture_data(
+        db_session,
+    )
     backtest_id = None
 
     try:
@@ -259,11 +265,27 @@ async def test_execute_server_side_backtest_resolves_database_inputs(
         assert payload["report"]["average_relative_return_pct"] == 4.0
         assert payload["report"]["directional_accuracy"] == 1.0
 
+        assert payload["report"]["market_data_quality_state"] == "sufficient"
+        assert payload["report"]["market_data_expected_count"] == 1
+        assert payload["report"]["market_data_resolved_count"] == 1
+        assert payload["report"]["market_data_coverage_ratio"] == 1.0
+
+        persisted_run = await db_session.get(
+            BacktestRun,
+            backtest_id,
+        )
+
+        assert persisted_run is not None
+        assert persisted_run.market_data_expected_count == 1
+        assert persisted_run.market_data_resolved_count == 1
+        assert persisted_run.market_data_coverage_ratio == 1.0
+
         persisted_evaluations = await db_session.execute(
             BacktestEvaluation.__table__.select().where(
                 BacktestEvaluation.signal_id == signal.id,
             ),
         )
+
         evaluation_rows = tuple(persisted_evaluations)
 
         assert len(evaluation_rows) == 1
@@ -285,7 +307,9 @@ async def test_execute_server_side_backtest_rejects_unknown_benchmark(
     client,
     db_session,
 ):
-    instrument, benchmark, _ = await create_fixture_data(db_session)
+    instrument, benchmark, _ = await create_fixture_data(
+        db_session,
+    )
 
     try:
         response = await client.post(

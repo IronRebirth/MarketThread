@@ -108,10 +108,14 @@ class BacktestExecutionService:
         signals: tuple[BacktestSignal, ...] | list[BacktestSignal],
         observations: tuple[TimeAwareObservation, ...] | list[TimeAwareObservation],
         backtest_id: UUID | None = None,
+        market_data_expected_count: int | None = None,
+        market_data_resolved_count: int | None = None,
     ) -> BacktestExecutionResult:
         return self._engine.execute(
             folds=tuple(folds),
             signals=tuple(signals),
             observations=tuple(observations),
             backtest_id=backtest_id,
+            market_data_expected_count=market_data_expected_count,
+            market_data_resolved_count=market_data_resolved_count,
         )

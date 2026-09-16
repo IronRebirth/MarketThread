@@ -115,6 +115,12 @@ class BacktestPerformanceReportResponse(BaseModel):
     quality_coverage_ratio: float | None
     quality_warnings: tuple[str, ...]
 
+    market_data_quality_state: str
+    market_data_expected_count: int | None
+    market_data_resolved_count: int | None
+    market_data_coverage_ratio: float | None
+    market_data_quality_warnings: tuple[str, ...]
+
     by_horizon: PerformanceBreakdownResponse
     by_signal_strength: PerformanceBreakdownResponse
     by_recommendation_state: PerformanceBreakdownResponse
@@ -153,6 +159,11 @@ def to_response(
         quality_expected_count=report.quality.expected_count,
         quality_coverage_ratio=report.quality.coverage_ratio,
         quality_warnings=tuple(warning.value for warning in report.quality.warnings),
+        market_data_quality_state=report.market_data_quality_state,
+        market_data_expected_count=report.market_data_expected_count,
+        market_data_resolved_count=report.market_data_resolved_count,
+        market_data_coverage_ratio=report.market_data_coverage_ratio,
+        market_data_quality_warnings=report.market_data_quality_warnings,
         by_horizon=_breakdown_to_response(report.by_horizon),
         by_signal_strength=_breakdown_to_response(
             report.by_signal_strength,
@@ -183,9 +194,11 @@ def _summary_to_response(
         quality_state = summary.quality.state.value
 
     return PerformanceBreakdownSummaryResponse(
-        state=str(summary.state.value)
-        if hasattr(summary.state, "value")
-        else str(summary.state),
+        state=(
+            str(summary.state.value)
+            if hasattr(summary.state, "value")
+            else str(summary.state)
+        ),
         evaluation_count=summary.evaluation_count,
         directional_accuracy=summary.directional_accuracy,
         average_forward_return_pct=summary.average_forward_return_pct,

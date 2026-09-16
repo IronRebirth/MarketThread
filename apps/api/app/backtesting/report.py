@@ -45,6 +45,12 @@ class BacktestPerformanceReport(BaseModel):
 
     quality: BacktestQualityAssessment
 
+    market_data_quality_state: str = "not_assessed"
+    market_data_expected_count: int | None = None
+    market_data_resolved_count: int | None = None
+    market_data_coverage_ratio: float | None = None
+    market_data_quality_warnings: tuple[str, ...] = ()
+
     by_horizon: PerformanceBreakdown = Field(
         default_factory=PerformanceBreakdown,
     )
@@ -81,6 +87,11 @@ def build_performance_report(
         expected_count=expected_count,
     )
 
+    (
+        market_data_quality_state,
+        market_data_quality_warnings,
+    ) = _assess_market_data_quality(execution)
+
     horizon_evaluations = tuple(
         evaluation for evaluation in valid_evaluations if evaluation.horizon is not None
     )
@@ -109,24 +120,12 @@ def build_performance_report(
         for recommendation_state in EvaluationRecommendationState
     )
 
-    if not evaluations:
-        notes = (
-            "No evaluations are available for performance reporting.",
-            "Overall quality is marked as insufficient evidence.",
-        )
-    elif not valid_evaluations:
-        notes = (
-            "No valid evaluations are available for performance reporting.",
-            "Overall quality is marked as insufficient evidence.",
-        )
-    else:
-        notes = (
-            "Performance metrics are based only on temporally valid evaluations.",
-            "Horizon metrics are derived from horizon-specific backtest evaluations.",
-            "Quality state reflects sample size and, when available, "
-            "evaluation coverage.",
-            "Confidence is treated as evidence support, not probability of profit.",
-        )
+    notes = _build_report_notes(
+        evaluations=evaluations,
+        valid_evaluations=valid_evaluations,
+        market_data_quality_state=market_data_quality_state,
+        market_data_quality_warnings=market_data_quality_warnings,
+    )
 
     return BacktestPerformanceReport(
         backtest_id=str(execution.backtest_id),
@@ -138,6 +137,11 @@ def build_performance_report(
         average_relative_return_pct=overall.average_relative_return_pct,
         positive_outcome_rate=overall.positive_outcome_rate,
         quality=quality,
+        market_data_quality_state=market_data_quality_state,
+        market_data_expected_count=execution.market_data_expected_count,
+        market_data_resolved_count=execution.market_data_resolved_count,
+        market_data_coverage_ratio=execution.market_data_coverage_ratio,
+        market_data_quality_warnings=market_data_quality_warnings,
         by_horizon=PerformanceBreakdown(
             summaries=horizon_summaries,
         ),
@@ -149,6 +153,81 @@ def build_performance_report(
         ),
         notes=notes,
     )
+
+
+def _assess_market_data_quality(
+    execution: BacktestExecutionResult,
+) -> tuple[str, tuple[str, ...]]:
+    expected = execution.market_data_expected_count
+    resolved = execution.market_data_resolved_count
+    coverage = execution.market_data_coverage_ratio
+
+    if expected is None or resolved is None:
+        return "not_assessed", ()
+
+    if expected == 0:
+        return (
+            "unavailable",
+            ("No deterministic server-side signals were available.",),
+        )
+
+    if resolved == 0:
+        return (
+            "insufficient",
+            ("No deterministic signals received usable market-data observations.",),
+        )
+
+    if coverage is not None and coverage < 0.95:
+        return (
+            "insufficient",
+            ("Market-data coverage is below the 95% minimum threshold.",),
+        )
+
+    return "sufficient", ()
+
+
+def _build_report_notes(
+    *,
+    evaluations: tuple[TimeAwareEvaluation, ...] | list[TimeAwareEvaluation],
+    valid_evaluations: tuple[TimeAwareEvaluation, ...],
+    market_data_quality_state: str,
+    market_data_quality_warnings: tuple[str, ...],
+) -> tuple[str, ...]:
+    if not evaluations:
+        notes = [
+            "No evaluations are available for performance reporting.",
+            "Overall quality is marked as insufficient evidence.",
+        ]
+    elif not valid_evaluations:
+        notes = [
+            "No valid evaluations are available for performance reporting.",
+            "Overall quality is marked as insufficient evidence.",
+        ]
+    else:
+        notes = [
+            "Performance metrics are based only on temporally valid evaluations.",
+            "Horizon metrics are derived from horizon-specific backtest evaluations.",
+            "Quality state reflects sample size and, when available, "
+            "evaluation coverage.",
+            "Confidence is treated as evidence support, not probability of profit.",
+        ]
+
+    if market_data_quality_state == "sufficient":
+        notes.append(
+            "Server-side market-data coverage meets the configured 95% threshold.",
+        )
+    elif market_data_quality_state == "insufficient":
+        notes.append(
+            "Server-side market-data coverage is insufficient for a complete "
+            "historical evaluation.",
+        )
+        notes.extend(market_data_quality_warnings)
+    elif market_data_quality_state == "unavailable":
+        notes.append(
+            "Server-side market-data coverage could not be established.",
+        )
+
+    return tuple(notes)
 
 
 def _build_horizon_summaries(

@@ -32,10 +32,24 @@ class BacktestDataResolutionResult:
         signals: tuple[BacktestSignal, ...],
         observations: tuple[TimeAwareObservation, ...],
         notes: tuple[str, ...] = (),
+        market_data_expected_count: int = 0,
+        market_data_resolved_count: int = 0,
     ) -> None:
         self.signals = signals
         self.observations = observations
         self.notes = notes
+        self.market_data_expected_count = market_data_expected_count
+        self.market_data_resolved_count = market_data_resolved_count
+
+    @property
+    def market_data_coverage_ratio(self) -> float | None:
+        if self.market_data_expected_count == 0:
+            return None
+
+        return min(
+            self.market_data_resolved_count / self.market_data_expected_count,
+            1.0,
+        )
 
 
 class BacktestDataResolver:
@@ -144,11 +158,13 @@ class BacktestDataResolver:
                 notes=tuple(notes),
             )
 
-        observations = await self._resolve_observations(
+        observations, resolved_market_data_count = await self._resolve_observations(
             session,
             resolved_signals,
             benchmark_instrument_id=benchmark_instrument_id,
         )
+
+        expected_market_data_count = len(resolved_signals)
 
         notes: list[str] = [
             "Signals were resolved from persisted historical signal snapshots.",
@@ -157,6 +173,21 @@ class BacktestDataResolver:
             "Target bars are selected at or after the requested horizon.",
             "Forward returns are calculated from entry close to target close.",
         ]
+
+        if expected_market_data_count:
+            coverage_ratio = resolved_market_data_count / expected_market_data_count
+
+            notes.append(
+                "Market-data coverage for deterministic signals is "
+                f"{coverage_ratio:.1%} "
+                f"({resolved_market_data_count}/{expected_market_data_count}).",
+            )
+
+            if resolved_market_data_count < expected_market_data_count:
+                notes.append(
+                    "Some deterministic signals did not have sufficient "
+                    "persisted market bars to produce a backtest observation.",
+                )
 
         if benchmark_instrument_id is None:
             notes.append(
@@ -182,6 +213,8 @@ class BacktestDataResolver:
             signals=tuple(resolved_signals),
             observations=observations,
             notes=tuple(notes),
+            market_data_expected_count=expected_market_data_count,
+            market_data_resolved_count=resolved_market_data_count,
         )
 
     async def _load_signals(
@@ -221,7 +254,7 @@ class BacktestDataResolver:
         signals: list[BacktestSignal],
         *,
         benchmark_instrument_id: UUID | None,
-    ) -> tuple[TimeAwareObservation, ...]:
+    ) -> tuple[tuple[TimeAwareObservation, ...], int]:
         repository = self._get_market_data_repository(session)
 
         target_instrument_ids = tuple(
@@ -254,6 +287,7 @@ class BacktestDataResolver:
             )
 
         observations: list[TimeAwareObservation] = []
+        resolved_count = 0
 
         for signal in signals:
             instrument_bars = target_bars.get(
@@ -280,8 +314,9 @@ class BacktestDataResolver:
 
             if observation is not None:
                 observations.append(observation)
+                resolved_count += 1
 
-        return tuple(observations)
+        return tuple(observations), resolved_count
 
     def _get_market_data_repository(
         self,

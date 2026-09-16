@@ -31,6 +31,17 @@ class BacktestRun(Base):
         Integer,
         nullable=False,
     )
+    market_data_expected_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    market_data_resolved_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    market_data_coverage_ratio: Mapped[float | None] = mapped_column(
+        nullable=True,
+    )
     notes: Mapped[list[str]] = mapped_column(
         JSON,
         nullable=False,
