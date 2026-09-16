@@ -137,6 +137,7 @@ async def execute_server_side_backtest(
             backtest_id=request.backtest_id,
             market_data_expected_count=resolution.market_data_expected_count,
             market_data_resolved_count=resolution.market_data_resolved_count,
+            market_data_horizon_quality=resolution.market_data_horizon_quality,
         )
 
         if resolution.notes:
@@ -147,12 +148,6 @@ async def execute_server_side_backtest(
             run.notes = list(execution.notes + resolution.notes)
             await session.commit()
             await session.refresh(run)
-
-            execution = execution.model_copy(
-                update={
-                    "notes": tuple(run.notes),
-                },
-            )
 
     except BacktestDataResolutionError as exc:
         raise HTTPException(

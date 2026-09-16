@@ -11,6 +11,7 @@ from app.evaluation.models import (
 )
 
 from .horizon import BacktestHorizon
+from .market_data_quality import BacktestMarketDataHorizonQuality
 
 
 class BacktestStatus(StrEnum):
@@ -148,6 +149,10 @@ class BacktestExecutionResult(BaseModel):
     market_data_expected_count: int | None = None
     market_data_resolved_count: int | None = None
     market_data_coverage_ratio: float | None = None
+
+    market_data_horizon_quality: tuple[BacktestMarketDataHorizonQuality, ...] | None = (
+        None
+    )
 
     notes: tuple[str, ...] = ()
 
