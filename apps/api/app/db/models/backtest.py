@@ -42,6 +42,10 @@ class BacktestRun(Base):
     market_data_coverage_ratio: Mapped[float | None] = mapped_column(
         nullable=True,
     )
+    market_data_horizon_quality: Mapped[list[dict] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
     notes: Mapped[list[str]] = mapped_column(
         JSON,
         nullable=False,

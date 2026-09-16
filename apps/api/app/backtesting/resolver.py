@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.backtesting.engine import BacktestSignal
 from app.backtesting.horizon import BacktestHorizon
+from app.backtesting.market_data_quality import (
+    BacktestMarketDataHorizonQuality,
+    build_market_data_horizon_quality,
+)
 from app.backtesting.models import BacktestPeriod, TimeAwareObservation
 from app.db.models.instrument import Instrument
 from app.db.models.market_bar import MarketBar
@@ -31,19 +35,26 @@ class BacktestDataResolutionResult:
         *,
         signals: tuple[BacktestSignal, ...],
         observations: tuple[TimeAwareObservation, ...],
+        market_data_expected_count: int | None = None,
+        market_data_resolved_count: int | None = None,
+        market_data_horizon_quality: (
+            tuple[BacktestMarketDataHorizonQuality, ...] | None
+        ) = None,
         notes: tuple[str, ...] = (),
-        market_data_expected_count: int = 0,
-        market_data_resolved_count: int = 0,
     ) -> None:
         self.signals = signals
         self.observations = observations
-        self.notes = notes
         self.market_data_expected_count = market_data_expected_count
         self.market_data_resolved_count = market_data_resolved_count
+        self.market_data_horizon_quality = market_data_horizon_quality
+        self.notes = notes
 
     @property
     def market_data_coverage_ratio(self) -> float | None:
-        if self.market_data_expected_count == 0:
+        if self.market_data_expected_count in (None, 0):
+            return None
+
+        if self.market_data_resolved_count is None:
             return None
 
         return min(
@@ -106,9 +117,17 @@ class BacktestDataResolver:
         )
 
         if not signals:
+            market_data_quality = build_market_data_horizon_quality(
+                expected_by_horizon={},
+                resolved_by_horizon={},
+            )
+
             return BacktestDataResolutionResult(
                 signals=(),
                 observations=(),
+                market_data_expected_count=0,
+                market_data_resolved_count=0,
+                market_data_horizon_quality=market_data_quality,
                 notes=(
                     "No persisted market signals were found in the "
                     "requested evaluation periods.",
@@ -152,9 +171,17 @@ class BacktestDataResolver:
                     "time horizons.",
                 )
 
+            market_data_quality = build_market_data_horizon_quality(
+                expected_by_horizon={},
+                resolved_by_horizon={},
+            )
+
             return BacktestDataResolutionResult(
                 signals=(),
                 observations=(),
+                market_data_expected_count=0,
+                market_data_resolved_count=0,
+                market_data_horizon_quality=market_data_quality,
                 notes=tuple(notes),
             )
 
@@ -164,7 +191,27 @@ class BacktestDataResolver:
             benchmark_instrument_id=benchmark_instrument_id,
         )
 
-        expected_market_data_count = len(resolved_signals)
+        expected_by_horizon: dict[BacktestHorizon, int] = {
+            horizon: 0 for horizon in BacktestHorizon
+        }
+        resolved_by_horizon: dict[BacktestHorizon, int] = {
+            horizon: 0 for horizon in BacktestHorizon
+        }
+
+        for signal in resolved_signals:
+            horizon = self._horizon_for_signal(signal)
+            expected_by_horizon[horizon] += 1
+
+        for observation in observations:
+            if observation.horizon is not None:
+                resolved_by_horizon[observation.horizon] += 1
+
+        market_data_horizon_quality = build_market_data_horizon_quality(
+            expected_by_horizon=expected_by_horizon,
+            resolved_by_horizon=resolved_by_horizon,
+        )
+
+        market_data_expected_count = sum(expected_by_horizon.values())
 
         notes: list[str] = [
             "Signals were resolved from persisted historical signal snapshots.",
@@ -172,22 +219,11 @@ class BacktestDataResolver:
             "Entry bars must occur strictly after signal creation.",
             "Target bars are selected at or after the requested horizon.",
             "Forward returns are calculated from entry close to target close.",
+            (
+                "Market-data quality is assessed independently for each "
+                "deterministic backtest horizon."
+            ),
         ]
-
-        if expected_market_data_count:
-            coverage_ratio = resolved_market_data_count / expected_market_data_count
-
-            notes.append(
-                "Market-data coverage for deterministic signals is "
-                f"{coverage_ratio:.1%} "
-                f"({resolved_market_data_count}/{expected_market_data_count}).",
-            )
-
-            if resolved_market_data_count < expected_market_data_count:
-                notes.append(
-                    "Some deterministic signals did not have sufficient "
-                    "persisted market bars to produce a backtest observation.",
-                )
 
         if benchmark_instrument_id is None:
             notes.append(
@@ -209,12 +245,18 @@ class BacktestDataResolver:
                 f"Skipped {skipped_uncertain} signal(s) with uncertain time horizons.",
             )
 
+        notes.append(
+            "Market-data coverage thresholds are evaluated independently "
+            "from backtest evaluation-quality thresholds.",
+        )
+
         return BacktestDataResolutionResult(
             signals=tuple(resolved_signals),
             observations=observations,
-            notes=tuple(notes),
-            market_data_expected_count=expected_market_data_count,
+            market_data_expected_count=market_data_expected_count,
             market_data_resolved_count=resolved_market_data_count,
+            market_data_horizon_quality=market_data_horizon_quality,
+            notes=tuple(notes),
         )
 
     async def _load_signals(
@@ -287,7 +329,6 @@ class BacktestDataResolver:
             )
 
         observations: list[TimeAwareObservation] = []
-        resolved_count = 0
 
         for signal in signals:
             instrument_bars = target_bars.get(
@@ -314,16 +355,14 @@ class BacktestDataResolver:
 
             if observation is not None:
                 observations.append(observation)
-                resolved_count += 1
 
-        return tuple(observations), resolved_count
+        return tuple(observations), len(observations)
 
     def _get_market_data_repository(
         self,
         session: AsyncSession,
     ) -> MarketDataRepository:
         """Return the configured repository or create a session-bound one."""
-
         return self.market_data_repository or MarketDataRepository(session)
 
     @classmethod

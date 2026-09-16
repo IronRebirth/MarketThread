@@ -11,6 +11,7 @@ from app.evaluation.models import (
 
 from .analyzer import TimeAwareBacktestAnalyzer
 from .horizon import BacktestHorizon
+from .market_data_quality import BacktestMarketDataHorizonQuality
 from .models import (
     BacktestExecutionResult,
     BacktestFoldResult,
@@ -47,19 +48,49 @@ class BacktestExecutionEngine:
         *,
         folds: tuple[WalkForwardFold, ...] | list[WalkForwardFold],
         signals: tuple[BacktestSignal, ...] | list[BacktestSignal],
-        observations: tuple[
-            TimeAwareObservation,
-            ...,
-        ]
-        | list[TimeAwareObservation],
+        observations: tuple[TimeAwareObservation, ...] | list[TimeAwareObservation],
         backtest_id: UUID | None = None,
         market_data_expected_count: int | None = None,
         market_data_resolved_count: int | None = None,
+        market_data_horizon_quality: (
+            tuple[BacktestMarketDataHorizonQuality, ...] | None
+        ) = None,
     ) -> BacktestExecutionResult:
         resolved_backtest_id = backtest_id or uuid4()
         folds = tuple(folds)
         signals = tuple(signals)
         observations = tuple(observations)
+
+        if market_data_expected_count is not None:
+            if market_data_expected_count < 0:
+                raise ValueError(
+                    "market_data_expected_count must be non-negative.",
+                )
+
+        if market_data_resolved_count is not None:
+            if market_data_resolved_count < 0:
+                raise ValueError(
+                    "market_data_resolved_count must be non-negative.",
+                )
+
+        if (
+            market_data_expected_count is not None
+            and market_data_resolved_count is not None
+            and market_data_resolved_count > market_data_expected_count
+        ):
+            raise ValueError(
+                "market_data_resolved_count cannot exceed market_data_expected_count.",
+            )
+
+        market_data_coverage_ratio = None
+
+        if market_data_expected_count:
+            market_data_coverage_ratio = min(
+                market_data_resolved_count / market_data_expected_count
+                if market_data_resolved_count is not None
+                else 0.0,
+                1.0,
+            )
 
         invalid_fold_numbers = tuple(
             fold.fold_number for fold in folds if not fold.is_temporally_valid()
@@ -153,38 +184,6 @@ class BacktestExecutionEngine:
         if not folds:
             valid = False
 
-        market_data_coverage_ratio = None
-
-        if market_data_expected_count is not None:
-            if market_data_expected_count < 0:
-                raise ValueError(
-                    "market_data_expected_count cannot be negative.",
-                )
-
-            if market_data_resolved_count is None:
-                raise ValueError(
-                    "market_data_resolved_count is required when "
-                    "market_data_expected_count is provided.",
-                )
-
-            if market_data_resolved_count < 0:
-                raise ValueError(
-                    "market_data_resolved_count cannot be negative.",
-                )
-
-            if market_data_resolved_count > market_data_expected_count:
-                raise ValueError(
-                    "market_data_resolved_count cannot exceed "
-                    "market_data_expected_count.",
-                )
-
-            if market_data_expected_count > 0:
-                market_data_coverage_ratio = (
-                    market_data_resolved_count / market_data_expected_count
-                )
-            else:
-                market_data_coverage_ratio = 1.0
-
         notes: tuple[str, ...] = (
             "Only observations strictly after signal creation are eligible.",
             "The earliest eligible observation is selected for each signal "
@@ -197,12 +196,6 @@ class BacktestExecutionEngine:
         if not chronology_is_valid:
             notes += ("Walk-forward fold ordering failed temporal validation.",)
 
-        if market_data_expected_count is not None:
-            notes += (
-                "Market-data coverage metadata was resolved from persisted "
-                "historical market bars.",
-            )
-
         return BacktestExecutionResult(
             backtest_id=resolved_backtest_id,
             fold_results=tuple(fold_results),
@@ -213,6 +206,7 @@ class BacktestExecutionEngine:
             market_data_expected_count=market_data_expected_count,
             market_data_resolved_count=market_data_resolved_count,
             market_data_coverage_ratio=market_data_coverage_ratio,
+            market_data_horizon_quality=market_data_horizon_quality,
             notes=notes,
         )
 

@@ -7,6 +7,7 @@ from .engine import (
     BacktestExecutionResult,
     BacktestSignal,
 )
+from .market_data_quality import BacktestMarketDataHorizonQuality
 from .models import (
     BacktestPeriod,
     TimeAwareBacktestSummary,
@@ -110,6 +111,9 @@ class BacktestExecutionService:
         backtest_id: UUID | None = None,
         market_data_expected_count: int | None = None,
         market_data_resolved_count: int | None = None,
+        market_data_horizon_quality: (
+            tuple[BacktestMarketDataHorizonQuality, ...] | None
+        ) = None,
     ) -> BacktestExecutionResult:
         return self._engine.execute(
             folds=tuple(folds),
@@ -118,4 +122,5 @@ class BacktestExecutionService:
             backtest_id=backtest_id,
             market_data_expected_count=market_data_expected_count,
             market_data_resolved_count=market_data_resolved_count,
+            market_data_horizon_quality=market_data_horizon_quality,
         )

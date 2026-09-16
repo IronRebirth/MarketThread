@@ -11,6 +11,7 @@ from app.db.models.backtest import (
 )
 
 from .horizon import BacktestHorizon
+from .market_data_quality import BacktestMarketDataHorizonQuality
 from .models import (
     BacktestExecutionResult,
     BacktestFoldResult,
@@ -60,6 +61,14 @@ class BacktestPersistenceService:
             market_data_expected_count=execution.market_data_expected_count,
             market_data_resolved_count=execution.market_data_resolved_count,
             market_data_coverage_ratio=execution.market_data_coverage_ratio,
+            market_data_horizon_quality=(
+                [
+                    quality.model_dump(mode="json")
+                    for quality in execution.market_data_horizon_quality
+                ]
+                if execution.market_data_horizon_quality is not None
+                else None
+            ),
             notes=list(execution.notes),
             completed_at=completed_at,
             created_at=completed_at,
@@ -199,6 +208,14 @@ class BacktestPersistenceService:
                 ),
             )
 
+        horizon_quality = None
+
+        if run.market_data_horizon_quality is not None:
+            horizon_quality = tuple(
+                BacktestMarketDataHorizonQuality.model_validate(item)
+                for item in run.market_data_horizon_quality
+            )
+
         return BacktestExecutionResult(
             backtest_id=run.id,
             fold_results=tuple(fold_results),
@@ -209,6 +226,7 @@ class BacktestPersistenceService:
             market_data_expected_count=run.market_data_expected_count,
             market_data_resolved_count=run.market_data_resolved_count,
             market_data_coverage_ratio=run.market_data_coverage_ratio,
+            market_data_horizon_quality=horizon_quality,
             notes=tuple(run.notes),
         )
 

@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 from .engine import BacktestSignal
+from .market_data_quality import BacktestMarketDataHorizonQuality
 from .models import (
     BacktestExecutionResult,
     BacktestPeriod,
@@ -43,6 +44,9 @@ class BacktestExecutionOrchestrator:
         backtest_id: UUID | None = None,
         market_data_expected_count: int | None = None,
         market_data_resolved_count: int | None = None,
+        market_data_horizon_quality: (
+            tuple[BacktestMarketDataHorizonQuality, ...] | None
+        ) = None,
     ) -> BacktestExecutionResult:
         resolved_backtest_id = backtest_id or uuid4()
 
@@ -65,6 +69,7 @@ class BacktestExecutionOrchestrator:
             backtest_id=resolved_backtest_id,
             market_data_expected_count=market_data_expected_count,
             market_data_resolved_count=market_data_resolved_count,
+            market_data_horizon_quality=market_data_horizon_quality,
         )
 
         await self._persistence_service.save_execution(

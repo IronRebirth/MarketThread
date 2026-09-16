@@ -1,284 +1,115 @@
-from datetime import UTC, datetime, timedelta
-from decimal import Decimal
-from uuid import uuid4
-
 import pytest
 
-from app.market_data.models import Bar, Quote
-from app.market_data.quality import (
-    MarketDataQualityError,
-    assess_historical_completeness,
-    assess_quote_freshness,
+from app.backtesting.horizon import BacktestHorizon
+from app.backtesting.market_data_quality import (
+    assess_market_data_horizon_quality,
+    build_market_data_horizon_quality,
 )
 
 
-def make_quote(timestamp: datetime) -> Quote:
-    return Quote(
-        instrument_id=uuid4(),
-        timestamp=timestamp,
-        price=Decimal("100"),
-        bid=Decimal("99"),
-        ask=Decimal("101"),
-        volume=Decimal("1000"),
-        source="test-provider",
+def test_assesses_sufficient_market_data_coverage() -> None:
+    result = assess_market_data_horizon_quality(
+        horizon=BacktestHorizon.ONE_DAY,
+        expected_count=100,
+        resolved_count=100,
     )
 
+    assert result.horizon == BacktestHorizon.ONE_DAY
+    assert result.expected_count == 100
+    assert result.resolved_count == 100
+    assert result.coverage_ratio == 1.0
+    assert result.quality_state == "sufficient"
+    assert result.warnings == ()
 
-def make_bar(timestamp: datetime) -> Bar:
-    return Bar(
-        instrument_id=uuid4(),
-        timestamp=timestamp,
-        open=Decimal("100"),
-        high=Decimal("105"),
-        low=Decimal("95"),
-        close=Decimal("102"),
-        volume=Decimal("1000"),
-        source="test-provider",
+
+def test_assesses_insufficient_market_data_coverage() -> None:
+    result = assess_market_data_horizon_quality(
+        horizon=BacktestHorizon.FIVE_DAYS,
+        expected_count=100,
+        resolved_count=50,
     )
 
+    assert result.horizon == BacktestHorizon.FIVE_DAYS
+    assert result.coverage_ratio == 0.5
+    assert result.quality_state == "insufficient"
+    assert result.warnings
 
-def test_quote_is_fresh_when_within_maximum_age() -> None:
-    assessed_at = datetime(
-        2026,
-        1,
-        2,
-        12,
-        0,
-        tzinfo=UTC,
-    )
-    quote = make_quote(
-        assessed_at - timedelta(minutes=5),
-    )
 
-    result = assess_quote_freshness(
-        quote,
-        assessed_at=assessed_at,
-        maximum_age=timedelta(minutes=15),
+def test_assesses_unavailable_market_data_when_no_signals_exist() -> None:
+    result = assess_market_data_horizon_quality(
+        horizon=BacktestHorizon.TWENTY_DAYS,
+        expected_count=0,
+        resolved_count=0,
     )
 
-    assert result.status == "fresh"
-    assert result.age_seconds == 300
-    assert result.maximum_age_seconds == 900
+    assert result.coverage_ratio is None
+    assert result.quality_state == "unavailable"
+    assert result.warnings
 
 
-def test_quote_is_stale_when_older_than_maximum_age() -> None:
-    assessed_at = datetime(
-        2026,
-        1,
-        2,
-        12,
-        0,
-        tzinfo=UTC,
-    )
-    quote = make_quote(
-        assessed_at - timedelta(minutes=30),
-    )
-
-    result = assess_quote_freshness(
-        quote,
-        assessed_at=assessed_at,
-        maximum_age=timedelta(minutes=15),
-    )
-
-    assert result.status == "stale"
-    assert result.age_seconds == 1800
-
-
-def test_missing_quote_is_unavailable() -> None:
-    assessed_at = datetime(
-        2026,
-        1,
-        2,
-        12,
-        0,
-        tzinfo=UTC,
-    )
-
-    result = assess_quote_freshness(
-        None,
-        assessed_at=assessed_at,
-    )
-
-    assert result.status == "unavailable"
-    assert result.observed_at is None
-    assert result.age_seconds is None
-
-
-def test_future_quote_timestamp_is_rejected() -> None:
-    assessed_at = datetime(
-        2026,
-        1,
-        2,
-        12,
-        0,
-        tzinfo=UTC,
-    )
-    quote = make_quote(
-        assessed_at + timedelta(minutes=1),
-    )
-
+def test_rejects_negative_expected_count() -> None:
     with pytest.raises(
-        MarketDataQualityError,
-        match="quote timestamp is in the future",
+        ValueError,
+        match="expected_count must be non-negative",
     ):
-        assess_quote_freshness(
-            quote,
-            assessed_at=assessed_at,
+        assess_market_data_horizon_quality(
+            horizon=BacktestHorizon.ONE_DAY,
+            expected_count=-1,
+            resolved_count=0,
         )
 
 
-def test_historical_coverage_is_sufficient() -> None:
-    start = datetime(
-        2026,
-        1,
-        1,
-        0,
-        0,
-        tzinfo=UTC,
-    )
-    end = start + timedelta(hours=24)
-
-    bars = [make_bar(start + timedelta(hours=offset)) for offset in range(24)]
-
-    result = assess_historical_completeness(
-        bars,
-        start=start,
-        end=end,
-        expected_interval=timedelta(hours=1),
-    )
-
-    assert result.status == "sufficient"
-    assert result.expected_bars == 24
-    assert result.observed_bars == 24
-    assert result.missing_bars == 0
-    assert result.coverage_ratio == 1
-    assert result.sources == ("test-provider",)
-
-
-def test_historical_coverage_is_insufficient_when_bars_are_missing() -> None:
-    start = datetime(
-        2026,
-        1,
-        1,
-        0,
-        0,
-        tzinfo=UTC,
-    )
-    end = start + timedelta(hours=24)
-
-    bars = [make_bar(start + timedelta(hours=offset)) for offset in range(20)]
-
-    result = assess_historical_completeness(
-        bars,
-        start=start,
-        end=end,
-        expected_interval=timedelta(hours=1),
-        minimum_coverage=0.95,
-    )
-
-    assert result.status == "insufficient"
-    assert result.expected_bars == 24
-    assert result.observed_bars == 20
-    assert result.missing_bars == 4
-    assert result.coverage_ratio == pytest.approx(20 / 24)
-
-
-def test_historical_coverage_is_unavailable_without_bars() -> None:
-    start = datetime(
-        2026,
-        1,
-        1,
-        tzinfo=UTC,
-    )
-    end = start + timedelta(days=1)
-
-    result = assess_historical_completeness(
-        [],
-        start=start,
-        end=end,
-        expected_interval=timedelta(hours=1),
-    )
-
-    assert result.status == "unavailable"
-    assert result.observed_bars == 0
-    assert result.missing_bars == 24
-    assert result.coverage_ratio == 0
-    assert result.first_observed_at is None
-    assert result.last_observed_at is None
-
-
-def test_duplicate_timestamps_count_once() -> None:
-    start = datetime(
-        2026,
-        1,
-        1,
-        tzinfo=UTC,
-    )
-    end = start + timedelta(hours=3)
-
-    first = make_bar(start)
-    duplicate = first.model_copy(update={"source": "second-provider"})
-    second = make_bar(start + timedelta(hours=1))
-    third = make_bar(start + timedelta(hours=2))
-
-    result = assess_historical_completeness(
-        [
-            first,
-            duplicate,
-            second,
-            third,
-        ],
-        start=start,
-        end=end,
-        expected_interval=timedelta(hours=1),
-    )
-
-    assert result.observed_bars == 3
-    assert result.coverage_ratio == 1
-    assert result.sources == (
-        "second-provider",
-        "test-provider",
-    )
-
-
-def test_quality_rejects_naive_start_timestamp() -> None:
-    start = datetime(2026, 1, 1)
-    end = datetime(
-        2026,
-        1,
-        2,
-        tzinfo=UTC,
-    )
-
+def test_rejects_negative_resolved_count() -> None:
     with pytest.raises(
-        MarketDataQualityError,
-        match="start timestamp must be timezone-aware",
+        ValueError,
+        match="resolved_count must be non-negative",
     ):
-        assess_historical_completeness(
-            [],
-            start=start,
-            end=end,
-            expected_interval=timedelta(hours=1),
+        assess_market_data_horizon_quality(
+            horizon=BacktestHorizon.ONE_DAY,
+            expected_count=1,
+            resolved_count=-1,
         )
 
 
-def test_quality_rejects_invalid_coverage_threshold() -> None:
-    start = datetime(
-        2026,
-        1,
-        1,
-        tzinfo=UTC,
-    )
-    end = start + timedelta(hours=1)
-
+def test_rejects_resolved_count_above_expected_count() -> None:
     with pytest.raises(
-        MarketDataQualityError,
-        match="minimum coverage must be greater than zero and at most one",
+        ValueError,
+        match="resolved_count cannot exceed expected_count",
     ):
-        assess_historical_completeness(
-            [],
-            start=start,
-            end=end,
-            expected_interval=timedelta(hours=1),
-            minimum_coverage=1.1,
+        assess_market_data_horizon_quality(
+            horizon=BacktestHorizon.ONE_DAY,
+            expected_count=1,
+            resolved_count=2,
         )
+
+
+def test_builds_assessments_for_all_supported_horizons() -> None:
+    result = build_market_data_horizon_quality(
+        expected_by_horizon={
+            BacktestHorizon.ONE_DAY: 10,
+            BacktestHorizon.FIVE_DAYS: 20,
+        },
+        resolved_by_horizon={
+            BacktestHorizon.ONE_DAY: 10,
+            BacktestHorizon.FIVE_DAYS: 10,
+        },
+    )
+
+    assert tuple(item.horizon for item in result) == (
+        BacktestHorizon.ONE_DAY,
+        BacktestHorizon.FIVE_DAYS,
+        BacktestHorizon.TWENTY_DAYS,
+    )
+
+    one_day = result[0]
+    five_days = result[1]
+    twenty_days = result[2]
+
+    assert one_day.quality_state == "sufficient"
+    assert one_day.coverage_ratio == 1.0
+
+    assert five_days.quality_state == "insufficient"
+    assert five_days.coverage_ratio == 0.5
+
+    assert twenty_days.quality_state == "unavailable"
+    assert twenty_days.coverage_ratio is None
