@@ -21,8 +21,18 @@ def make_period(
     """Create a yearly backtest period."""
 
     return BacktestPeriod(
-        start_at=datetime(start_year, 1, 1, tzinfo=UTC),
-        end_at=datetime(end_year, 1, 1, tzinfo=UTC),
+        start_at=datetime(
+            start_year,
+            1,
+            1,
+            tzinfo=UTC,
+        ),
+        end_at=datetime(
+            end_year,
+            1,
+            1,
+            tzinfo=UTC,
+        ),
     )
 
 
@@ -75,13 +85,23 @@ def execute_backtest():
 
     signals = (
         make_signal(
-            created_at=datetime(2021, 2, 1, tzinfo=UTC),
+            created_at=datetime(
+                2021,
+                2,
+                1,
+                tzinfo=UTC,
+            ),
             instrument_id=instrument_id,
             strength=EvaluationSignalStrength.STRONG,
             recommendation=EvaluationRecommendationState.CONSIDER,
         ),
         make_signal(
-            created_at=datetime(2021, 4, 1, tzinfo=UTC),
+            created_at=datetime(
+                2021,
+                4,
+                1,
+                tzinfo=UTC,
+            ),
             instrument_id=instrument_id,
             strength=EvaluationSignalStrength.MODERATE,
             recommendation=EvaluationRecommendationState.WATCH,
@@ -90,13 +110,23 @@ def execute_backtest():
 
     observations = (
         make_observation(
-            observed_at=datetime(2021, 2, 5, tzinfo=UTC),
+            observed_at=datetime(
+                2021,
+                2,
+                5,
+                tzinfo=UTC,
+            ),
             instrument_id=instrument_id,
             forward_return_pct=5.0,
             benchmark_return_pct=1.0,
         ),
         make_observation(
-            observed_at=datetime(2021, 4, 5, tzinfo=UTC),
+            observed_at=datetime(
+                2021,
+                4,
+                5,
+                tzinfo=UTC,
+            ),
             instrument_id=instrument_id,
             forward_return_pct=-2.0,
             benchmark_return_pct=1.0,
@@ -209,3 +239,38 @@ def test_empty_execution_produces_explicit_report() -> None:
     assert report.average_relative_return_pct is None
     assert report.positive_outcome_rate is None
     assert "no evaluations" in report.notes[0].lower()
+
+
+def test_report_exposes_server_side_market_data_quality() -> None:
+    execution = execute_backtest().model_copy(
+        update={
+            "market_data_expected_count": 10,
+            "market_data_resolved_count": 8,
+            "market_data_coverage_ratio": 0.8,
+        },
+    )
+
+    report = BacktestPerformanceReportService().build_report(
+        execution,
+    )
+
+    assert report.market_data_quality_state == "insufficient"
+    assert report.market_data_expected_count == 10
+    assert report.market_data_resolved_count == 8
+    assert report.market_data_coverage_ratio == 0.8
+    assert report.market_data_quality_warnings == (
+        "Market-data coverage is below the 95% minimum threshold.",
+    )
+
+
+def test_report_marks_market_data_as_not_assessed_for_manual_execution() -> None:
+    execution = execute_backtest()
+
+    report = BacktestPerformanceReportService().build_report(
+        execution,
+    )
+
+    assert report.market_data_quality_state == "not_assessed"
+    assert report.market_data_expected_count is None
+    assert report.market_data_resolved_count is None
+    assert report.market_data_coverage_ratio is None

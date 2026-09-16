@@ -144,6 +144,11 @@ class BacktestExecutionResult(BaseModel):
     evaluation_count: int
     valid_evaluation_count: int
     rejected_evaluation_count: int
+
+    market_data_expected_count: int | None = None
+    market_data_resolved_count: int | None = None
+    market_data_coverage_ratio: float | None = None
+
     notes: tuple[str, ...] = ()
 
     @property

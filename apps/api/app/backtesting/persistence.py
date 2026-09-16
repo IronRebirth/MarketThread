@@ -57,6 +57,9 @@ class BacktestPersistenceService:
             evaluation_count=execution.evaluation_count,
             valid_evaluation_count=execution.valid_evaluation_count,
             rejected_evaluation_count=execution.rejected_evaluation_count,
+            market_data_expected_count=execution.market_data_expected_count,
+            market_data_resolved_count=execution.market_data_resolved_count,
+            market_data_coverage_ratio=execution.market_data_coverage_ratio,
             notes=list(execution.notes),
             completed_at=completed_at,
             created_at=completed_at,
@@ -64,7 +67,6 @@ class BacktestPersistenceService:
 
         session.add(run)
 
-        # Folds reference the run by foreign key, so persist the run first.
         await session.flush()
 
         for fold_result in execution.fold_results:
@@ -75,8 +77,6 @@ class BacktestPersistenceService:
 
             session.add(fold)
 
-            # Evaluations reference the fold by foreign key, so persist the
-            # fold before inserting its evaluations.
             await session.flush()
 
             for evaluation in fold_result.evaluations:
@@ -206,6 +206,9 @@ class BacktestPersistenceService:
             evaluation_count=run.evaluation_count,
             valid_evaluation_count=run.valid_evaluation_count,
             rejected_evaluation_count=run.rejected_evaluation_count,
+            market_data_expected_count=run.market_data_expected_count,
+            market_data_resolved_count=run.market_data_resolved_count,
+            market_data_coverage_ratio=run.market_data_coverage_ratio,
             notes=tuple(run.notes),
         )
 

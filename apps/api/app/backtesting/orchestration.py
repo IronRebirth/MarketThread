@@ -41,6 +41,8 @@ class BacktestExecutionOrchestrator:
         signals: tuple[BacktestSignal, ...],
         observations: tuple[TimeAwareObservation, ...],
         backtest_id: UUID | None = None,
+        market_data_expected_count: int | None = None,
+        market_data_resolved_count: int | None = None,
     ) -> BacktestExecutionResult:
         resolved_backtest_id = backtest_id or uuid4()
 
@@ -61,6 +63,8 @@ class BacktestExecutionOrchestrator:
             signals=signals,
             observations=observations,
             backtest_id=resolved_backtest_id,
+            market_data_expected_count=market_data_expected_count,
+            market_data_resolved_count=market_data_resolved_count,
         )
 
         await self._persistence_service.save_execution(
