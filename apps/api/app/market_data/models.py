@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,6 +47,38 @@ class Bar(BaseModel):
     close: Decimal
     volume: Decimal | None = None
     source: str = Field(min_length=1, max_length=64)
+
+
+class QuoteFreshness(BaseModel):
+    """Freshness assessment for the latest available quote."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["fresh", "stale", "unavailable"]
+    observed_at: datetime | None
+    assessed_at: datetime
+    age_seconds: float | None
+    maximum_age_seconds: float
+    source: str | None = None
+
+
+class HistoricalDataCompleteness(BaseModel):
+    """Coverage assessment for a requested historical market-data range."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["sufficient", "insufficient", "unavailable"]
+    start: datetime
+    end: datetime
+    expected_interval_seconds: float
+    minimum_coverage: float
+    expected_bars: int
+    observed_bars: int
+    missing_bars: int
+    coverage_ratio: float
+    first_observed_at: datetime | None
+    last_observed_at: datetime | None
+    sources: tuple[str, ...] = ()
 
 
 class MarketDataIngestionRequest(BaseModel):

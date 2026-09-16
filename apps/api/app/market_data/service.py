@@ -1,10 +1,20 @@
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
-from app.market_data.models import Bar, Instrument, Quote
+from app.market_data.models import (
+    Bar,
+    HistoricalDataCompleteness,
+    Instrument,
+    Quote,
+    QuoteFreshness,
+)
 from app.market_data.providers.base import MarketDataProvider
 from app.market_data.providers.errors import MarketDataProviderError
+from app.market_data.quality import (
+    assess_historical_completeness,
+    assess_quote_freshness,
+)
 from app.market_data.repository import MarketDataRepository
 
 
@@ -121,6 +131,48 @@ class MarketDataService:
             instrument_id,
             start,
             end,
+        )
+
+    async def assess_quote_freshness(
+        self,
+        instrument_id: UUID,
+        *,
+        assessed_at: datetime | None = None,
+        maximum_age: timedelta = timedelta(minutes=15),
+    ) -> QuoteFreshness:
+        """Assess freshness of the latest available quote."""
+
+        quote = await self.get_latest_quote(instrument_id)
+
+        return assess_quote_freshness(
+            quote,
+            assessed_at=assessed_at,
+            maximum_age=maximum_age,
+        )
+
+    async def assess_historical_completeness(
+        self,
+        instrument_id: UUID,
+        *,
+        start: datetime,
+        end: datetime,
+        expected_interval: timedelta,
+        minimum_coverage: float = 0.95,
+    ) -> HistoricalDataCompleteness:
+        """Assess coverage of the requested historical market-data range."""
+
+        bars = await self.get_historical_bars(
+            instrument_id,
+            start,
+            end,
+        )
+
+        return assess_historical_completeness(
+            bars,
+            start=start,
+            end=end,
+            expected_interval=expected_interval,
+            minimum_coverage=minimum_coverage,
         )
 
     def _require_provider(self) -> MarketDataProvider:

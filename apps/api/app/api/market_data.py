@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -9,14 +9,17 @@ from app.db.session import get_db_session
 from app.market_data.ingestion import MarketDataIngestionService
 from app.market_data.models import (
     Bar,
+    HistoricalDataCompleteness,
     Instrument,
     MarketDataIngestionRequest,
     MarketDataIngestionResult,
     Quote,
+    QuoteFreshness,
 )
 from app.market_data.persistence import MarketDataPersistenceService
 from app.market_data.providers.errors import MarketDataProviderError
 from app.market_data.providers.factory import create_market_data_provider
+from app.market_data.quality import MarketDataQualityError
 from app.market_data.repository import MarketDataRepository
 from app.market_data.service import MarketDataService
 
@@ -153,6 +156,46 @@ async def get_latest_quote(
 
 
 @router.get(
+    "/instruments/{symbol}/quote/quality",
+    response_model=QuoteFreshness,
+)
+async def get_quote_freshness(
+    symbol: str,
+    maximum_age_seconds: Annotated[
+        int,
+        Query(gt=0, le=86400),
+    ] = 900,
+    service: MarketDataServiceDependency = None,
+) -> QuoteFreshness:
+    """Assess the freshness of the latest available quote."""
+
+    instrument = await _resolve_instrument(
+        symbol,
+        service,
+    )
+
+    try:
+        result = await service.assess_quote_freshness(
+            instrument.id,
+            maximum_age=timedelta(
+                seconds=maximum_age_seconds,
+            ),
+        )
+    except MarketDataProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Market-data is unavailable.",
+        ) from exc
+    except MarketDataQualityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return result
+
+
+@router.get(
     "/instruments/{symbol}/bars",
     response_model=list[Bar],
 )
@@ -187,6 +230,60 @@ async def get_historical_bars(
         ) from exc
 
     return list(bars)
+
+
+@router.get(
+    "/instruments/{symbol}/bars/quality",
+    response_model=HistoricalDataCompleteness,
+)
+async def get_historical_bars_quality(
+    symbol: str,
+    start: datetime,
+    end: datetime,
+    expected_interval_seconds: Annotated[
+        int,
+        Query(gt=0, le=31536000),
+    ],
+    minimum_coverage: Annotated[
+        float,
+        Query(gt=0, le=1),
+    ] = 0.95,
+    service: MarketDataServiceDependency = None,
+) -> HistoricalDataCompleteness:
+    """Assess historical bar coverage for an explicit interval."""
+
+    instrument = await _resolve_instrument(
+        symbol,
+        service,
+    )
+
+    try:
+        result = await service.assess_historical_completeness(
+            instrument.id,
+            start=start,
+            end=end,
+            expected_interval=timedelta(
+                seconds=expected_interval_seconds,
+            ),
+            minimum_coverage=minimum_coverage,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except MarketDataProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Market-data is unavailable.",
+        ) from exc
+    except MarketDataQualityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return result
 
 
 @router.post(
