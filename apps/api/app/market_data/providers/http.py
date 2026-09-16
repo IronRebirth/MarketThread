@@ -1,10 +1,16 @@
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
+from time import perf_counter
 from uuid import UUID
 
 import httpx
 
-from app.market_data.models import Bar, Instrument, Quote
+from app.market_data.models import (
+    Bar,
+    Instrument,
+    MarketDataProviderHealth,
+    Quote,
+)
 from app.market_data.providers.errors import (
     MarketDataInvalidResponseError,
     MarketDataNotFoundError,
@@ -35,6 +41,65 @@ class HttpMarketDataProvider:
             return {}
 
         return {"Authorization": f"Bearer {self.api_key}"}
+
+    async def health_check(self) -> MarketDataProviderHealth:
+        """Check upstream provider availability and request latency."""
+
+        checked_at = datetime.now(UTC)
+        started_at = perf_counter()
+
+        url = f"{self.base_url}/health"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    url,
+                    headers=self._headers(),
+                )
+        except httpx.HTTPError:
+            return MarketDataProviderHealth(
+                provider=self.name,
+                status="unavailable",
+                checked_at=checked_at,
+                latency_ms=round(
+                    (perf_counter() - started_at) * 1000,
+                    3,
+                ),
+                detail="Provider health check request failed.",
+            )
+
+        latency_ms = round(
+            (perf_counter() - started_at) * 1000,
+            3,
+        )
+
+        if 200 <= response.status_code < 300:
+            return MarketDataProviderHealth(
+                provider=self.name,
+                status="healthy",
+                checked_at=checked_at,
+                latency_ms=latency_ms,
+                detail="Provider health check succeeded.",
+            )
+
+        if response.status_code >= 500:
+            return MarketDataProviderHealth(
+                provider=self.name,
+                status="unavailable",
+                checked_at=checked_at,
+                latency_ms=latency_ms,
+                detail=(
+                    f"Provider health endpoint returned HTTP {response.status_code}."
+                ),
+            )
+
+        return MarketDataProviderHealth(
+            provider=self.name,
+            status="degraded",
+            checked_at=checked_at,
+            latency_ms=latency_ms,
+            detail=(f"Provider health endpoint returned HTTP {response.status_code}."),
+        )
 
     async def _get(
         self,

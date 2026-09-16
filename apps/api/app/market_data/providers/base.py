@@ -3,13 +3,21 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.market_data.models import Bar, Instrument, Quote
+from app.market_data.models import (
+    Bar,
+    Instrument,
+    MarketDataProviderHealth,
+    Quote,
+)
 
 
 class MarketDataProvider(Protocol):
     """Interface implemented by external market-data providers."""
 
     name: str
+
+    async def health_check(self) -> MarketDataProviderHealth:
+        """Check whether the provider can currently serve requests."""
 
     async def get_instrument(
         self,

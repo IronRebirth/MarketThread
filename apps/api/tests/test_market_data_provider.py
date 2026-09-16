@@ -16,6 +16,136 @@ INSTRUMENT_ID = uuid4()
 
 
 @pytest.mark.asyncio
+async def test_provider_health_check_reports_healthy(monkeypatch) -> None:
+    provider = HttpMarketDataProvider(
+        base_url="https://provider.example",
+        api_key="test-key",
+    )
+
+    class HealthyResponse:
+        status_code = 200
+
+    class HealthyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, *args, **kwargs):
+            return HealthyResponse()
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: HealthyClient(),
+    )
+
+    result = await provider.health_check()
+
+    assert result.provider == "http"
+    assert result.status == "healthy"
+    assert result.latency_ms is not None
+    assert result.latency_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_provider_health_check_reports_degraded_for_client_error(
+    monkeypatch,
+) -> None:
+    provider = HttpMarketDataProvider(
+        base_url="https://provider.example",
+    )
+
+    class DegradedResponse:
+        status_code = 429
+
+    class DegradedClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, *args, **kwargs):
+            return DegradedResponse()
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: DegradedClient(),
+    )
+
+    result = await provider.health_check()
+
+    assert result.status == "degraded"
+    assert result.latency_ms is not None
+
+
+@pytest.mark.asyncio
+async def test_provider_health_check_reports_unavailable_for_server_error(
+    monkeypatch,
+) -> None:
+    provider = HttpMarketDataProvider(
+        base_url="https://provider.example",
+    )
+
+    class UnavailableResponse:
+        status_code = 503
+
+    class UnavailableClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, *args, **kwargs):
+            return UnavailableResponse()
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: UnavailableClient(),
+    )
+
+    result = await provider.health_check()
+
+    assert result.status == "unavailable"
+    assert result.latency_ms is not None
+
+
+@pytest.mark.asyncio
+async def test_provider_health_check_translates_connection_failure(
+    monkeypatch,
+) -> None:
+    provider = HttpMarketDataProvider(
+        base_url="https://provider.example",
+    )
+
+    class FailingClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, *args, **kwargs):
+            raise httpx.ConnectError("connection failed")
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: FailingClient(),
+    )
+
+    result = await provider.health_check()
+
+    assert result.status == "unavailable"
+    assert result.latency_ms is not None
+
+
+@pytest.mark.asyncio
 async def test_provider_returns_normalized_instrument(
     monkeypatch,
 ) -> None:
