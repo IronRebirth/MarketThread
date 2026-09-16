@@ -4,10 +4,13 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.api.market_data import get_market_data_service
 from app.db.models.instrument import Instrument as InstrumentRecord
 from app.db.models.market_bar import MarketBar
 from app.db.models.market_data import MarketQuote
+from app.main import app
 from app.market_data.models import Bar, Instrument, Quote
 from app.market_data.repository import MarketDataRepository
 from app.market_data.service import MarketDataService
@@ -297,3 +300,107 @@ async def test_database_bars_are_used_before_provider(
     assert len(result) == 1
     assert result[0].close == Decimal("307")
     assert result[0].source == "persisted-test"
+
+
+def test_api_get_instrument_uses_market_data_service() -> None:
+    provider = FakeMarketDataProvider()
+    service = MarketDataService(provider)
+
+    app.dependency_overrides[get_market_data_service] = lambda: service
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/market-data/instruments/aapl")
+    finally:
+        app.dependency_overrides.pop(get_market_data_service, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["symbol"] == "AAPL"
+    assert payload["name"] == "Apple Inc."
+
+
+def test_api_get_latest_quote_uses_market_data_service() -> None:
+    provider = FakeMarketDataProvider()
+    service = MarketDataService(provider)
+
+    app.dependency_overrides[get_market_data_service] = lambda: service
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/market-data/instruments/AAPL/quote")
+    finally:
+        app.dependency_overrides.pop(get_market_data_service, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["instrument_id"] == str(provider.instrument.id)
+    assert payload["source"] == "test-provider"
+    assert Decimal(str(payload["price"])) == Decimal("200.12")
+
+
+def test_api_get_historical_bars_uses_market_data_service() -> None:
+    provider = FakeMarketDataProvider()
+    service = MarketDataService(provider)
+
+    app.dependency_overrides[get_market_data_service] = lambda: service
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/market-data/instruments/AAPL/bars",
+                params={
+                    "start": "2026-01-01T00:00:00Z",
+                    "end": "2026-01-02T00:00:00Z",
+                },
+            )
+    finally:
+        app.dependency_overrides.pop(get_market_data_service, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert len(payload) == 1
+    assert payload[0]["instrument_id"] == str(provider.instrument.id)
+    assert payload[0]["source"] == "test-provider"
+    assert Decimal(str(payload[0]["close"])) == Decimal("200.00")
+
+
+def test_api_get_historical_bars_rejects_invalid_range() -> None:
+    provider = FakeMarketDataProvider()
+    service = MarketDataService(provider)
+
+    app.dependency_overrides[get_market_data_service] = lambda: service
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/market-data/instruments/AAPL/bars",
+                params={
+                    "start": "2026-01-02T00:00:00Z",
+                    "end": "2026-01-01T00:00:00Z",
+                },
+            )
+    finally:
+        app.dependency_overrides.pop(get_market_data_service, None)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start must be earlier than end"
+
+
+def test_api_get_instrument_returns_not_found() -> None:
+    provider = FakeMarketDataProvider()
+    service = MarketDataService(provider)
+
+    app.dependency_overrides[get_market_data_service] = lambda: service
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/market-data/instruments/MSFT")
+    finally:
+        app.dependency_overrides.pop(get_market_data_service, None)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Instrument not found."
