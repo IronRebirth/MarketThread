@@ -1,5 +1,9 @@
 from uuid import UUID, uuid4
 
+from app.provenance.models import AnalysisStage
+from app.provenance.persistence import ProvenancePersistenceService
+from app.provenance.service import ProvenanceService
+
 from .engine import BacktestSignal
 from .market_data_quality import BacktestMarketDataHorizonQuality
 from .models import (
@@ -26,12 +30,18 @@ class BacktestExecutionOrchestrator:
         walk_forward_analyzer: WalkForwardBacktestAnalyzer | None = None,
         execution_service: BacktestExecutionService | None = None,
         persistence_service: BacktestPersistenceService | None = None,
+        provenance_service: ProvenanceService | None = None,
+        provenance_persistence_service: ProvenancePersistenceService | None = None,
     ) -> None:
         self._walk_forward_analyzer = (
             walk_forward_analyzer or WalkForwardBacktestAnalyzer()
         )
         self._execution_service = execution_service or BacktestExecutionService()
         self._persistence_service = persistence_service or BacktestPersistenceService()
+        self._provenance_service = provenance_service or ProvenanceService()
+        self._provenance_persistence_service = (
+            provenance_persistence_service or ProvenancePersistenceService()
+        )
 
     async def execute_and_persist(
         self,
@@ -75,6 +85,23 @@ class BacktestExecutionOrchestrator:
         await self._persistence_service.save_execution(
             session,
             execution,
+        )
+
+        provenance = self._provenance_service.create_record(
+            result_id=execution.backtest_id,
+            stage=AnalysisStage.BACKTESTING,
+            input_ids=tuple(signal.signal_id for signal in signals),
+            evidence=(),
+            assumptions=execution.notes,
+            invalidation_conditions=(
+                "Persisted backtest inputs or historical observations are changed.",
+                "The backtest execution ruleset changes.",
+            ),
+        )
+
+        await self._provenance_persistence_service.save(
+            session,
+            provenance,
         )
 
         return execution

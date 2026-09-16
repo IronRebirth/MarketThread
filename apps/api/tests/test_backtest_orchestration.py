@@ -14,6 +14,7 @@ from app.evaluation.models import (
     EvaluationRecommendationState,
     EvaluationSignalStrength,
 )
+from app.provenance.models import ProvenanceRecord
 
 
 def _period(
@@ -56,12 +57,27 @@ class FakePersistenceService:
         return execution
 
 
+class FakeProvenancePersistenceService:
+    def __init__(self) -> None:
+        self.saved_record: ProvenanceRecord | None = None
+
+    async def save(
+        self,
+        session,
+        record: ProvenanceRecord,
+    ):
+        self.saved_record = record
+        return record
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_builds_valid_execution_before_persistence():
     instrument_id = uuid4()
     persistence = FakePersistenceService()
+    provenance_persistence = FakeProvenancePersistenceService()
     orchestrator = BacktestExecutionOrchestrator(
         persistence_service=persistence,
+        provenance_persistence_service=provenance_persistence,
     )
 
     signal = _signal(
@@ -104,12 +120,18 @@ async def test_orchestrator_builds_valid_execution_before_persistence():
     assert execution.valid_evaluation_count == 1
     assert persistence.saved_execution is execution
 
+    assert provenance_persistence.saved_record is not None
+    assert provenance_persistence.saved_record.result_id == execution.backtest_id
+    assert provenance_persistence.saved_record.input_ids == (signal.signal_id,)
+
 
 @pytest.mark.asyncio
 async def test_orchestrator_rejects_invalid_walk_forward_configuration():
     persistence = FakePersistenceService()
+    provenance_persistence = FakeProvenancePersistenceService()
     orchestrator = BacktestExecutionOrchestrator(
         persistence_service=persistence,
+        provenance_persistence_service=provenance_persistence,
     )
 
     with pytest.raises(BacktestExecutionConfigurationError):
@@ -132,3 +154,4 @@ async def test_orchestrator_rejects_invalid_walk_forward_configuration():
         )
 
     assert persistence.saved_execution is None
+    assert provenance_persistence.saved_record is None
