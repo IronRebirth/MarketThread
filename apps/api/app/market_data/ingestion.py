@@ -52,11 +52,7 @@ class MarketDataIngestionService:
                 end,
             )
 
-            validated_quote = (
-                validate_quote(quote)
-                if quote is not None
-                else None
-            )
+            validated_quote = validate_quote(quote) if quote is not None else None
             validated_bars = validate_bars(list(bars))
 
             persisted_instrument = await self.persistence.upsert_instrument(
