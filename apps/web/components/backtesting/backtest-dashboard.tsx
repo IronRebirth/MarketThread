@@ -17,6 +17,7 @@ import {
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { BacktestRunConfigurationCard } from "./backtest-run-configuration";
 
 type Report = BacktestPerformanceReport;
 
@@ -565,6 +566,10 @@ export function BacktestDashboard() {
             </p>
           </div>
         </Card>
+      )}
+
+      {!isLoading && selectedRun && (
+        <BacktestRunConfigurationCard run={selectedRun} />
       )}
 
       {!isLoading && runs.length > 1 && selectedBacktestId && (
