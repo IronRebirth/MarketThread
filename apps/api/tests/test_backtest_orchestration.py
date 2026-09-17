@@ -47,13 +47,17 @@ def _signal(
 class FakePersistenceService:
     def __init__(self) -> None:
         self.saved_execution = None
+        self.saved_configuration = None
 
     async def save_execution(
         self,
         session,
         execution,
+        *,
+        configuration=None,
     ):
         self.saved_execution = execution
+        self.saved_configuration = configuration
         return execution
 
 
@@ -85,6 +89,20 @@ async def test_orchestrator_builds_valid_execution_before_persistence():
         created_at="2021-02-01T00:00:00+00:00",
     )
 
+    training_periods = (
+        _period(
+            "2020-01-01T00:00:00+00:00",
+            "2021-01-01T00:00:00+00:00",
+        ),
+    )
+
+    evaluation_periods = (
+        _period(
+            "2021-01-01T00:00:00+00:00",
+            "2022-01-01T00:00:00+00:00",
+        ),
+    )
+
     observation = TimeAwareObservation(
         instrument_id=instrument_id,
         observed_at=datetime(
@@ -99,18 +117,8 @@ async def test_orchestrator_builds_valid_execution_before_persistence():
 
     execution = await orchestrator.execute_and_persist(
         session=object(),
-        training_periods=(
-            _period(
-                "2020-01-01T00:00:00+00:00",
-                "2021-01-01T00:00:00+00:00",
-            ),
-        ),
-        evaluation_periods=(
-            _period(
-                "2021-01-01T00:00:00+00:00",
-                "2022-01-01T00:00:00+00:00",
-            ),
-        ),
+        training_periods=training_periods,
+        evaluation_periods=evaluation_periods,
         signals=(signal,),
         observations=(observation,),
     )
@@ -120,9 +128,54 @@ async def test_orchestrator_builds_valid_execution_before_persistence():
     assert execution.valid_evaluation_count == 1
     assert persistence.saved_execution is execution
 
+    assert persistence.saved_configuration is not None
+    assert persistence.saved_configuration.training_periods == training_periods
+    assert persistence.saved_configuration.evaluation_periods == evaluation_periods
+    assert persistence.saved_configuration.benchmark_instrument_id is None
+
     assert provenance_persistence.saved_record is not None
     assert provenance_persistence.saved_record.result_id == execution.backtest_id
     assert provenance_persistence.saved_record.input_ids == (signal.signal_id,)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_persists_benchmark_in_configuration():
+    benchmark_instrument_id = uuid4()
+    persistence = FakePersistenceService()
+    provenance_persistence = FakeProvenancePersistenceService()
+    orchestrator = BacktestExecutionOrchestrator(
+        persistence_service=persistence,
+        provenance_persistence_service=provenance_persistence,
+    )
+
+    training_periods = (
+        _period(
+            "2020-01-01T00:00:00+00:00",
+            "2021-01-01T00:00:00+00:00",
+        ),
+    )
+
+    evaluation_periods = (
+        _period(
+            "2021-01-01T00:00:00+00:00",
+            "2022-01-01T00:00:00+00:00",
+        ),
+    )
+
+    await orchestrator.execute_and_persist(
+        session=object(),
+        training_periods=training_periods,
+        evaluation_periods=evaluation_periods,
+        signals=(),
+        observations=(),
+        benchmark_instrument_id=benchmark_instrument_id,
+    )
+
+    assert persistence.saved_configuration is not None
+    assert (
+        persistence.saved_configuration.benchmark_instrument_id
+        == benchmark_instrument_id
+    )
 
 
 @pytest.mark.asyncio
@@ -154,4 +207,5 @@ async def test_orchestrator_rejects_invalid_walk_forward_configuration():
         )
 
     assert persistence.saved_execution is None
+    assert persistence.saved_configuration is None
     assert provenance_persistence.saved_record is None

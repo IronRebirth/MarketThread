@@ -9,17 +9,17 @@ from app.backtesting.persistence import BacktestPersistenceService
 from app.db.models.backtest import BacktestRun
 from app.db.session import get_db_session
 
-test_app = FastAPI()
-test_app.include_router(backtest_api.router)
+api_app = FastAPI()
+api_app.include_router(backtest_api.router)
 
 
 async def override_get_db_session():
     yield object()
 
 
-test_app.dependency_overrides[get_db_session] = override_get_db_session
+api_app.dependency_overrides[get_db_session] = override_get_db_session
 
-client = TestClient(test_app)
+client = TestClient(api_app)
 
 
 def make_run(

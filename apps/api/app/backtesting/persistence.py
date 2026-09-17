@@ -16,6 +16,7 @@ from .models import (
     BacktestExecutionResult,
     BacktestFoldResult,
     BacktestPeriod,
+    BacktestRunConfiguration,
     TimeAwareEvaluation,
 )
 
@@ -39,6 +40,8 @@ class BacktestPersistenceService:
         self,
         session: AsyncSession,
         execution: BacktestExecutionResult,
+        *,
+        configuration: BacktestRunConfiguration | None = None,
     ) -> BacktestRun:
         existing = await session.get(
             BacktestRun,
@@ -67,6 +70,11 @@ class BacktestPersistenceService:
                     for quality in execution.market_data_horizon_quality
                 ]
                 if execution.market_data_horizon_quality is not None
+                else None
+            ),
+            configuration=(
+                configuration.model_dump(mode="json")
+                if configuration is not None
                 else None
             ),
             notes=list(execution.notes),

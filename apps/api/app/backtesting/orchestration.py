@@ -9,6 +9,7 @@ from .market_data_quality import BacktestMarketDataHorizonQuality
 from .models import (
     BacktestExecutionResult,
     BacktestPeriod,
+    BacktestRunConfiguration,
     TimeAwareObservation,
     WalkForwardResult,
 )
@@ -52,6 +53,7 @@ class BacktestExecutionOrchestrator:
         signals: tuple[BacktestSignal, ...],
         observations: tuple[TimeAwareObservation, ...],
         backtest_id: UUID | None = None,
+        benchmark_instrument_id: UUID | None = None,
         market_data_expected_count: int | None = None,
         market_data_resolved_count: int | None = None,
         market_data_horizon_quality: (
@@ -82,9 +84,16 @@ class BacktestExecutionOrchestrator:
             market_data_horizon_quality=market_data_horizon_quality,
         )
 
+        configuration = BacktestRunConfiguration(
+            training_periods=training_periods,
+            evaluation_periods=evaluation_periods,
+            benchmark_instrument_id=benchmark_instrument_id,
+        )
+
         await self._persistence_service.save_execution(
             session,
             execution,
+            configuration=configuration,
         )
 
         provenance = self._provenance_service.create_record(

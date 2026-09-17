@@ -46,6 +46,10 @@ class BacktestRun(Base):
         JSON,
         nullable=True,
     )
+    configuration: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
     notes: Mapped[list[str]] = mapped_column(
         JSON,
         nullable=False,
