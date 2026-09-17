@@ -24,7 +24,8 @@ def make_article(
     return NewsArticle(
         id=uuid4(),
         source_id=uuid4(),
-        external_id=None,
+        source_name="Example News",
+        source_domain="example.com",
         url="https://example.com/news",
         title=title,
         summary=summary,
