@@ -80,6 +80,13 @@ class BacktestRunResponse(BaseModel):
     completed_at: datetime
 
 
+class BacktestRunHistoryResponse(BaseModel):
+    runs: tuple[BacktestRunResponse, ...]
+    total: int
+    limit: int
+    offset: int
+
+
 class BacktestExecutionResponse(BaseModel):
     run: BacktestRunResponse
     report: "BacktestPerformanceReportResponse"
