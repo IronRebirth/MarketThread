@@ -5,6 +5,7 @@ from app.db.models.backtest import (
     BacktestFold,
     BacktestRun,
 )
+from app.db.models.company_impact import CompanyImpactRecord
 from app.db.models.event import EventRecord
 from app.db.models.instrument import Instrument
 from app.db.models.market_bar import MarketBar
@@ -19,6 +20,7 @@ __all__ = [
     "BacktestFold",
     "BacktestProvenance",
     "BacktestRun",
+    "CompanyImpactRecord",
     "EventRecord",
     "Instrument",
     "MarketBar",
