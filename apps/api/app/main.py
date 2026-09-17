@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.market_data import router as market_data_router
 from app.backtesting.api import router as backtesting_router
+from app.company_impact.api import router as company_impact_router
 from app.core.config import get_settings
 from app.events.api import router as events_router
 from app.news.api import router as news_router
@@ -33,6 +34,7 @@ app.include_router(market_data_router)
 app.include_router(backtesting_router)
 app.include_router(news_router)
 app.include_router(events_router)
+app.include_router(company_impact_router)
 app.include_router(signals_router)
 
 
