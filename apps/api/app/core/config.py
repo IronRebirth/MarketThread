@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     market_data_base_url: str | None = None
 
     news_api_key: str | None = None
+    news_api_base_url: str = "https://newsapi.org"
+
     llm_api_key: str | None = None
 
     sentry_dsn: str | None = None
