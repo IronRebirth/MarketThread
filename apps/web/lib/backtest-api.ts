@@ -88,6 +88,16 @@ export type BacktestRunResponse = {
   completed_at: string;
 };
 
+export class BacktestApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "BacktestApiError";
+    this.status = status;
+  }
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
 
@@ -103,7 +113,8 @@ async function getJson<T>(
   if (!response.ok) {
     const detail = await response.text();
 
-    throw new Error(
+    throw new BacktestApiError(
+      response.status,
       detail || `Backtest API request failed (${response.status})`,
     );
   }

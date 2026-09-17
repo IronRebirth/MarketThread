@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  BacktestApiError,
+  fetchBacktestProvenance,
   fetchLatestBacktestPerformanceReport,
   type BacktestPerformanceReport,
+  type BacktestProvenance,
 } from "../../lib/backtest-api";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -57,19 +60,68 @@ function formatQualityState(state: string) {
   return state.replaceAll("_", " ");
 }
 
+function formatTimestamp(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatStage(stage: BacktestProvenance["stage"]) {
+  return stage.replaceAll("_", " ");
+}
+
 export function BacktestDashboard() {
   const [report, setReport] = useState<Report | null>(null);
+  const [provenance, setProvenance] = useState<BacktestProvenance | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [isProvenanceLoading, setIsProvenanceLoading] = useState(false);
+  const [provenanceUnavailable, setProvenanceUnavailable] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [provenanceErrorMessage, setProvenanceErrorMessage] = useState<
+    string | null
+  >(null);
 
   const loadReport = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
+    setProvenance(null);
+    setProvenanceUnavailable(false);
+    setProvenanceErrorMessage(null);
 
     try {
       const nextReport = await fetchLatestBacktestPerformanceReport();
 
       setReport(nextReport);
+      setIsProvenanceLoading(true);
+
+      try {
+        const nextProvenance = await fetchBacktestProvenance(
+          nextReport.backtest_id,
+        );
+
+        setProvenance(nextProvenance);
+      } catch (error) {
+        if (error instanceof BacktestApiError && error.status === 404) {
+          setProvenanceUnavailable(true);
+        } else {
+          setProvenanceErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "The backtest provenance could not be loaded.",
+          );
+        }
+      } finally {
+        setIsProvenanceLoading(false);
+      }
     } catch (error) {
       setReport(null);
       setErrorMessage(
@@ -77,6 +129,7 @@ export function BacktestDashboard() {
           ? error.message
           : "The backtest report could not be loaded.",
       );
+      setIsProvenanceLoading(false);
     } finally {
       setIsLoading(false);
     }
@@ -365,6 +418,13 @@ export function BacktestDashboard() {
             </Card>
           </section>
 
+          <ProvenanceCard
+            provenance={provenance}
+            isLoading={isProvenanceLoading}
+            unavailable={provenanceUnavailable}
+            errorMessage={provenanceErrorMessage}
+          />
+
           <section className="grid gap-6 xl:grid-cols-2">
             <Card
               title="By signal strength"
@@ -406,8 +466,260 @@ export function BacktestDashboard() {
               />
             </div>
           </Card>
-
         </>
+      )}
+    </div>
+  );
+}
+
+function ProvenanceCard({
+  provenance,
+  isLoading,
+  unavailable,
+  errorMessage,
+}: {
+  provenance: BacktestProvenance | null;
+  isLoading: boolean;
+  unavailable: boolean;
+  errorMessage: string | null;
+}) {
+  if (isLoading) {
+    return (
+      <Card
+        title="Provenance"
+        description="Retrieving the evidence and ruleset metadata associated with this backtest."
+      >
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map((item) => (
+            <div
+              key={item}
+              className="h-16 animate-pulse rounded-md bg-surface-muted"
+            />
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <Card
+        title="Provenance unavailable"
+        description="The backtest report is available, but its persisted provenance could not be retrieved."
+      >
+        <p className="text-sm leading-6 text-text-secondary">
+          {errorMessage}
+        </p>
+      </Card>
+    );
+  }
+
+  if (unavailable || provenance === null) {
+    return (
+      <Card
+        title="Provenance not available"
+        description="This backtest has no persisted provenance record."
+      >
+        <p className="text-sm leading-6 text-text-secondary">
+          The performance report can still be reviewed, but source evidence,
+          assumptions, and invalidation conditions were not persisted for this
+          run.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card
+      title="Provenance"
+      description="Traceability metadata recorded for the displayed backtest execution."
+    >
+      <div className="flex flex-col gap-7">
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          <ProvenanceMetric
+            label="Stage"
+            value={formatStage(provenance.stage)}
+          />
+
+          <ProvenanceMetric
+            label="Ruleset"
+            value={provenance.ruleset_version}
+          />
+
+          <ProvenanceMetric
+            label="Recorded"
+            value={formatTimestamp(provenance.created_at)}
+          />
+
+          <ProvenanceMetric
+            label="Input records"
+            value={String(provenance.input_ids.length)}
+          />
+        </div>
+
+        <div className="border-t border-border pt-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <p className="text-sm font-semibold text-text-primary">
+                Source evidence
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-text-secondary">
+                Evidence references retained with this analysis result.
+              </p>
+            </div>
+
+            {provenance.evidence.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                {provenance.evidence.map((evidence) => (
+                  <div
+                    key={`${evidence.article_id}-${evidence.retrieved_at}`}
+                    className="rounded-md border border-border bg-surface-subtle p-4"
+                  >
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-text-primary">
+                          {evidence.source_name}
+                        </p>
+
+                        <p className="mt-1 break-all text-xs text-text-muted">
+                          Article ID: {evidence.article_id}
+                        </p>
+                      </div>
+
+                      {evidence.published_at && (
+                        <span className="text-xs text-text-muted">
+                          Published {formatTimestamp(evidence.published_at)}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-3 text-sm leading-6 text-text-secondary">
+                      {evidence.relevance_note}
+                    </p>
+
+                    <div className="mt-3">
+                      <a
+                        href={evidence.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-sm font-medium text-brand underline decoration-brand/30 underline-offset-4 hover:decoration-brand"
+                      >
+                        {evidence.source_url}
+                      </a>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-muted">
+                      <span>
+                        Discovered {formatTimestamp(evidence.discovered_at)}
+                      </span>
+
+                      <span>
+                        Retrieved {formatTimestamp(evidence.retrieved_at)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm leading-6 text-text-secondary">
+                No source evidence was recorded for this result.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-6 border-t border-border pt-6 xl:grid-cols-2">
+          <ProvenanceList
+            title="Assumptions"
+            items={provenance.assumptions}
+            emptyMessage="No assumptions were recorded."
+          />
+
+          <ProvenanceList
+            title="Invalidation conditions"
+            items={provenance.invalidation_conditions}
+            emptyMessage="No invalidation conditions were recorded."
+          />
+        </div>
+
+        <div className="border-t border-border pt-6">
+          <p className="text-sm font-semibold text-text-primary">
+            Input record IDs
+          </p>
+
+          {provenance.input_ids.length > 0 ? (
+            <div className="mt-3 max-h-44 overflow-y-auto rounded-md border border-border bg-surface-subtle p-3">
+              <div className="flex flex-col gap-2">
+                {provenance.input_ids.map((inputId) => (
+                  <code
+                    key={inputId}
+                    className="break-all text-xs text-text-secondary"
+                  >
+                    {inputId}
+                  </code>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              No input record IDs were recorded.
+            </p>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ProvenanceMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
+        {label}
+      </p>
+
+      <p className="mt-1 text-sm font-semibold capitalize text-text-primary">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ProvenanceList({
+  title,
+  items,
+  emptyMessage,
+}: {
+  title: string;
+  items: string[];
+  emptyMessage: string;
+}) {
+  return (
+    <div>
+      <p className="text-sm font-semibold text-text-primary">{title}</p>
+
+      {items.length > 0 ? (
+        <div className="mt-3 flex flex-col gap-2">
+          {items.map((item) => (
+            <div
+              key={item}
+              className="rounded-md border border-border bg-surface-subtle px-3 py-2 text-sm leading-6 text-text-secondary"
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm leading-6 text-text-secondary">
+          {emptyMessage}
+        </p>
       )}
     </div>
   );
