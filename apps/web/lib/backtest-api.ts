@@ -44,6 +44,35 @@ export type BacktestPerformanceReport = {
   notes: string[];
 };
 
+export type BacktestProvenanceEvidence = {
+  article_id: string;
+  source_name: string;
+  source_url: string;
+  published_at: string | null;
+  discovered_at: string;
+  retrieved_at: string;
+  relevance_note: string;
+};
+
+export type BacktestProvenance = {
+  result_id: string;
+  stage:
+    | "news_intelligence"
+    | "event_intelligence"
+    | "company_impact"
+    | "market_impact"
+    | "signal_intelligence"
+    | "risk_confidence"
+    | "recommendation"
+    | "backtesting";
+  created_at: string;
+  ruleset_version: string;
+  evidence: BacktestProvenanceEvidence[];
+  input_ids: string[];
+  assumptions: string[];
+  invalidation_conditions: string[];
+};
+
 export type BacktestExecutionPayload = {
   backtest_id: string;
   fold_results?: unknown[];
@@ -110,6 +139,14 @@ export async function fetchBacktestPerformanceReportById(
 ): Promise<BacktestPerformanceReport> {
   return getJson<BacktestPerformanceReport>(
     `${API_BASE_URL}/backtests/runs/${backtestId}/performance-report`,
+  );
+}
+
+export async function fetchBacktestProvenance(
+  backtestId: string,
+): Promise<BacktestProvenance> {
+  return getJson<BacktestProvenance>(
+    `${API_BASE_URL}/backtests/runs/${backtestId}/provenance`,
   );
 }
 
