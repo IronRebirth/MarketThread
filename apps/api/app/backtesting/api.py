@@ -10,6 +10,10 @@ from app.provenance.persistence import (
     ProvenanceNotFoundError,
     ProvenancePersistenceService,
 )
+from app.provenance.schemas import (
+    BacktestProvenanceResponse,
+    to_backtest_response,
+)
 
 from .engine import BacktestExecutionResult
 from .orchestration import (
@@ -285,14 +289,18 @@ async def get_backtest_report(
 
 @router.get(
     "/runs/{backtest_id}/provenance",
-    response_model=dict,
+    response_model=BacktestProvenanceResponse,
     status_code=status.HTTP_200_OK,
     summary="Get persisted backtest provenance",
+    description=(
+        "Returns the immutable provenance record associated with a persisted "
+        "backtest execution."
+    ),
 )
 async def get_backtest_provenance(
     backtest_id: UUID,
     session: DatabaseSession,
-) -> dict:
+) -> BacktestProvenanceResponse:
     try:
         record = await _provenance_persistence_service.get(
             session,
@@ -304,4 +312,4 @@ async def get_backtest_provenance(
             detail=str(exc),
         ) from exc
 
-    return record.model_dump(mode="json")
+    return to_backtest_response(record)
