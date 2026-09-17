@@ -21,6 +21,16 @@ class NewsArticle(BaseModel):
 
     id: UUID
     source_id: UUID
+    source_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+    )
+    source_domain: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+    )
     title: str = Field(min_length=1, max_length=500)
     url: HttpUrl
     summary: str | None = None
