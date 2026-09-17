@@ -88,6 +88,13 @@ export type BacktestRunResponse = {
   completed_at: string;
 };
 
+export type BacktestRunHistoryResponse = {
+  runs: BacktestRunResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export class BacktestApiError extends Error {
   readonly status: number;
 
@@ -158,6 +165,15 @@ export async function fetchBacktestProvenance(
 ): Promise<BacktestProvenance> {
   return getJson<BacktestProvenance>(
     `${API_BASE_URL}/backtests/runs/${backtestId}/provenance`,
+  );
+}
+
+export async function fetchBacktestRuns(
+  limit = 20,
+  offset = 0,
+): Promise<BacktestRunHistoryResponse> {
+  return getJson<BacktestRunHistoryResponse>(
+    `${API_BASE_URL}/backtests/runs?limit=${limit}&offset=${offset}`,
   );
 }
 

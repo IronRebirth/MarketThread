@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   BacktestApiError,
+  fetchBacktestPerformanceReportById,
   fetchBacktestProvenance,
+  fetchBacktestRuns,
   fetchLatestBacktestPerformanceReport,
   type BacktestPerformanceReport,
   type BacktestProvenance,
+  type BacktestRunResponse,
 } from "../../lib/backtest-api";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -77,73 +80,154 @@ function formatStage(stage: BacktestProvenance["stage"]) {
   return stage.replaceAll("_", " ");
 }
 
+function formatRunLabel(run: BacktestRunResponse) {
+  return `${formatTimestamp(run.completed_at)} · ${run.evaluation_count} evaluations`;
+}
+
 export function BacktestDashboard() {
   const [report, setReport] = useState<Report | null>(null);
   const [provenance, setProvenance] = useState<BacktestProvenance | null>(
     null,
   );
+  const [runs, setRuns] = useState<BacktestRunResponse[]>([]);
+  const [totalRuns, setTotalRuns] = useState(0);
+  const [selectedBacktestId, setSelectedBacktestId] = useState<string | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [isRunLoading, setIsRunLoading] = useState(false);
   const [isProvenanceLoading, setIsProvenanceLoading] = useState(false);
   const [provenanceUnavailable, setProvenanceUnavailable] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [historyErrorMessage, setHistoryErrorMessage] = useState<string | null>(
+    null,
+  );
   const [provenanceErrorMessage, setProvenanceErrorMessage] = useState<
     string | null
   >(null);
 
-  const loadReport = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
+  const loadProvenance = useCallback(async (backtestId: string) => {
+    setIsProvenanceLoading(true);
     setProvenance(null);
     setProvenanceUnavailable(false);
     setProvenanceErrorMessage(null);
 
     try {
-      const nextReport = await fetchLatestBacktestPerformanceReport();
+      const nextProvenance = await fetchBacktestProvenance(backtestId);
 
-      setReport(nextReport);
-      setIsProvenanceLoading(true);
-
-      try {
-        const nextProvenance = await fetchBacktestProvenance(
-          nextReport.backtest_id,
-        );
-
-        setProvenance(nextProvenance);
-      } catch (error) {
-        if (error instanceof BacktestApiError && error.status === 404) {
-          setProvenanceUnavailable(true);
-        } else {
-          setProvenanceErrorMessage(
-            error instanceof Error
-              ? error.message
-              : "The backtest provenance could not be loaded.",
-          );
-        }
-      } finally {
-        setIsProvenanceLoading(false);
-      }
+      setProvenance(nextProvenance);
     } catch (error) {
-      setReport(null);
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "The backtest report could not be loaded.",
-      );
-      setIsProvenanceLoading(false);
+      if (error instanceof BacktestApiError && error.status === 404) {
+        setProvenanceUnavailable(true);
+      } else {
+        setProvenanceErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "The backtest provenance could not be loaded.",
+        );
+      }
     } finally {
-      setIsLoading(false);
+      setIsProvenanceLoading(false);
     }
   }, []);
 
+  const loadRun = useCallback(
+    async (backtestId: string) => {
+      setIsRunLoading(true);
+      setErrorMessage(null);
+      setSelectedBacktestId(backtestId);
+
+      try {
+        const nextReport =
+          await fetchBacktestPerformanceReportById(backtestId);
+
+        setReport(nextReport);
+        await loadProvenance(backtestId);
+      } catch (error) {
+        setReport(null);
+        setProvenance(null);
+        setProvenanceUnavailable(false);
+        setProvenanceErrorMessage(null);
+        setIsProvenanceLoading(false);
+
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "The selected backtest could not be loaded.",
+        );
+      } finally {
+        setIsRunLoading(false);
+      }
+    },
+    [loadProvenance],
+  );
+
+  const loadDashboard = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    setHistoryErrorMessage(null);
+    setReport(null);
+    setRuns([]);
+    setTotalRuns(0);
+    setSelectedBacktestId(null);
+    setProvenance(null);
+    setProvenanceUnavailable(false);
+    setProvenanceErrorMessage(null);
+
+    const [latestResult, historyResult] = await Promise.allSettled([
+      fetchLatestBacktestPerformanceReport(),
+      fetchBacktestRuns(),
+    ]);
+
+    let latestReport: BacktestPerformanceReport | null = null;
+
+    if (latestResult.status === "fulfilled") {
+      latestReport = latestResult.value;
+      setReport(latestReport);
+      setSelectedBacktestId(latestReport.backtest_id);
+    } else {
+      setErrorMessage(
+        latestResult.reason instanceof Error
+          ? latestResult.reason.message
+          : "The latest backtest report could not be loaded.",
+      );
+    }
+
+    if (historyResult.status === "fulfilled") {
+      setRuns(historyResult.value.runs);
+      setTotalRuns(historyResult.value.total);
+    } else {
+      setHistoryErrorMessage(
+        historyResult.reason instanceof Error
+          ? historyResult.reason.message
+          : "The backtest run history could not be loaded.",
+      );
+    }
+
+    setIsLoading(false);
+
+    if (latestReport) {
+      await loadProvenance(latestReport.backtest_id);
+    }
+  }, [loadProvenance]);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadReport();
+      void loadDashboard();
     }, 0);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [loadReport]);
+  }, [loadDashboard]);
+
+  const handleRunSelection = (backtestId: string) => {
+    if (backtestId === selectedBacktestId || isRunLoading) {
+      return;
+    }
+
+    void loadRun(backtestId);
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -163,24 +247,86 @@ export function BacktestDashboard() {
 
             <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
               Evaluate historical signal performance across time horizons,
-              recommendation states, signal strength, and evidence quality.
+              recommendation states, signal strength, evidence quality, and
+              persisted runs.
             </p>
           </div>
 
           <Button
             variant="secondary"
-            onClick={() => void loadReport()}
-            disabled={isLoading}
+            onClick={() => void loadDashboard()}
+            disabled={isLoading || isRunLoading}
           >
             {isLoading ? "Loading report" : "Refresh report"}
           </Button>
         </div>
       </header>
 
+      {historyErrorMessage && (
+        <Card
+          title="Run history unavailable"
+          description="The current report may still be available even though historical run metadata could not be retrieved."
+        >
+          <p className="text-sm leading-6 text-text-secondary">
+            {historyErrorMessage}
+          </p>
+        </Card>
+      )}
+
+      {!isLoading && runs.length > 0 && (
+        <Card
+          title="Run history"
+          description="Select a persisted backtest execution to inspect its report and provenance."
+        >
+          <div className="flex flex-col gap-5">
+            <label
+              htmlFor="backtest-run"
+              className="text-sm font-medium text-text-primary"
+            >
+              Selected run
+            </label>
+
+            <select
+              id="backtest-run"
+              value={selectedBacktestId ?? ""}
+              onChange={(event) => handleRunSelection(event.target.value)}
+              disabled={isRunLoading}
+              className="w-full rounded-md border border-border bg-surface-subtle px-3 py-2.5 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {runs.map((run) => (
+                <option key={run.backtest_id} value={run.backtest_id}>
+                  {formatRunLabel(run)}
+                </option>
+              ))}
+            </select>
+
+            {selectedBacktestId && (
+              <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                {runs.find(
+                  (run) => run.backtest_id === selectedBacktestId,
+                )?.valid ? (
+                  <Badge variant="positive">Valid run</Badge>
+                ) : (
+                  <Badge variant="warning">Run contains rejections</Badge>
+                )}
+
+                <span className="text-sm text-text-secondary">
+                  {selectedBacktestId}
+                </span>
+              </div>
+            )}
+
+            <p className="text-xs leading-5 text-text-muted">
+              Showing {runs.length} of {totalRuns} persisted runs.
+            </p>
+          </div>
+        </Card>
+      )}
+
       {errorMessage && (
         <Card
           title="Backtest report unavailable"
-          description="The dashboard could not retrieve the performance report from the API."
+          description="The dashboard could not retrieve the requested performance report from the API."
         >
           <div className="flex flex-col gap-4">
             <p className="text-sm leading-6 text-text-secondary">
@@ -188,15 +334,19 @@ export function BacktestDashboard() {
             </p>
 
             <div>
-              <Button onClick={() => void loadReport()}>Try again</Button>
+              <Button onClick={() => void loadDashboard()}>Try again</Button>
             </div>
           </div>
         </Card>
       )}
 
-      {isLoading && (
+      {(isLoading || isRunLoading) && (
         <Card
-          title="Loading backtest report"
+          title={
+            isRunLoading
+              ? "Loading selected backtest"
+              : "Loading backtest report"
+          }
           description="Retrieving performance and evidence-quality metrics from the MarketThread API."
         >
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -210,7 +360,7 @@ export function BacktestDashboard() {
         </Card>
       )}
 
-      {!isLoading && !errorMessage && report && (
+      {!isLoading && !isRunLoading && !errorMessage && report && (
         <>
           <Card
             title="Current analysis"

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.backtest import (
@@ -119,6 +119,38 @@ class BacktestPersistenceService:
             )
 
         return run
+
+    async def list_runs(
+        self,
+        session: AsyncSession,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[tuple[BacktestRun, ...], int]:
+        """Retrieve persisted backtest runs in reverse completion order."""
+
+        count_result = await session.execute(
+            select(func.count()).select_from(BacktestRun),
+        )
+
+        total = int(count_result.scalar_one())
+
+        if total == 0 or offset >= total:
+            return (), total
+
+        result = await session.execute(
+            select(BacktestRun)
+            .order_by(
+                BacktestRun.completed_at.desc(),
+                BacktestRun.created_at.desc(),
+            )
+            .offset(offset)
+            .limit(limit),
+        )
+
+        runs = tuple(result.scalars().all())
+
+        return runs, total
 
     async def get_execution(
         self,

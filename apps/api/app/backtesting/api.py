@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ from .schemas import (
     BacktestPerformanceReportRequest,
     BacktestPerformanceReportResponse,
     BacktestRunCreateRequest,
+    BacktestRunHistoryResponse,
     BacktestRunResponse,
     ServerSideBacktestExecutionRequest,
     to_response,
@@ -217,6 +218,44 @@ async def create_backtest_run(
         ) from exc
 
     return to_run_response(run)
+
+
+@router.get(
+    "/runs",
+    response_model=BacktestRunHistoryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List persisted backtest runs",
+    description=(
+        "Returns persisted backtest runs in reverse completion order with "
+        "pagination metadata."
+    ),
+)
+async def list_backtest_runs(
+    session: DatabaseSession,
+    limit: int = Query(
+        default=20,
+        ge=1,
+        le=50,
+        description="Maximum number of runs to return.",
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Number of runs to skip.",
+    ),
+) -> BacktestRunHistoryResponse:
+    runs, total = await _persistence_service.list_runs(
+        session,
+        limit=limit,
+        offset=offset,
+    )
+
+    return BacktestRunHistoryResponse(
+        runs=tuple(to_run_response(run) for run in runs),
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
