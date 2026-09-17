@@ -6,10 +6,8 @@ from fastapi.testclient import TestClient
 
 import app.backtesting.api as backtest_api
 from app.backtesting.persistence import BacktestPersistenceService
-from app.backtesting.schemas import BacktestRunResponse
-from app.db.session import get_db_session
 from app.db.models.backtest import BacktestRun
-
+from app.db.session import get_db_session
 
 test_app = FastAPI()
 test_app.include_router(backtest_api.router)
