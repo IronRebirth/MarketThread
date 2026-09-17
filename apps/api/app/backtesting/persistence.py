@@ -134,27 +134,56 @@ class BacktestPersistenceService:
         *,
         limit: int = 20,
         offset: int = 0,
+        valid: bool | None = None,
+        completed_after: datetime | None = None,
+        completed_before: datetime | None = None,
     ) -> tuple[tuple[BacktestRun, ...], int]:
-        """Retrieve persisted backtest runs in reverse completion order."""
+        """Retrieve persisted runs with optional metadata filters."""
 
-        count_result = await session.execute(
-            select(func.count()).select_from(BacktestRun),
+        filters = []
+
+        if valid is not None:
+            filters.append(
+                BacktestRun.valid.is_(valid),
+            )
+
+        if completed_after is not None:
+            filters.append(
+                BacktestRun.completed_at >= completed_after,
+            )
+
+        if completed_before is not None:
+            filters.append(
+                BacktestRun.completed_at <= completed_before,
+            )
+
+        count_query = (
+            select(func.count())
+            .select_from(BacktestRun)
+            .where(
+                *filters,
+            )
         )
+
+        count_result = await session.execute(count_query)
 
         total = int(count_result.scalar_one())
 
         if total == 0 or offset >= total:
             return (), total
 
-        result = await session.execute(
+        runs_query = (
             select(BacktestRun)
+            .where(*filters)
             .order_by(
                 BacktestRun.completed_at.desc(),
                 BacktestRun.created_at.desc(),
             )
             .offset(offset)
-            .limit(limit),
+            .limit(limit)
         )
+
+        result = await session.execute(runs_query)
 
         runs = tuple(result.scalars().all())
 
