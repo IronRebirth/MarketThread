@@ -28,6 +28,7 @@ from .persistence import (
 from .report_service import BacktestPerformanceReportService
 from .resolver import BacktestDataResolutionError, BacktestDataResolver
 from .schemas import (
+    BacktestEvaluationAuditListResponse,
     BacktestExecutionRequest,
     BacktestExecutionResponse,
     BacktestPerformanceReportRequest,
@@ -36,6 +37,7 @@ from .schemas import (
     BacktestRunHistoryResponse,
     BacktestRunResponse,
     ServerSideBacktestExecutionRequest,
+    to_evaluation_audit_response,
     to_response,
     to_run_response,
 )
@@ -252,6 +254,63 @@ async def list_backtest_runs(
 
     return BacktestRunHistoryResponse(
         runs=tuple(to_run_response(run) for run in runs),
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/runs/{backtest_id}/evaluations",
+    response_model=BacktestEvaluationAuditListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List persisted backtest evaluations",
+    description=(
+        "Returns the persisted evaluation-level audit records for a backtest "
+        "run in fold and signal-creation order."
+    ),
+)
+async def list_backtest_evaluations(
+    backtest_id: UUID,
+    session: DatabaseSession,
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum number of evaluations to return.",
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Number of evaluations to skip.",
+    ),
+) -> BacktestEvaluationAuditListResponse:
+    try:
+        await _persistence_service.get_run(
+            session,
+            backtest_id,
+        )
+
+        rows, total = await _persistence_service.list_evaluations(
+            session,
+            backtest_id,
+            limit=limit,
+            offset=offset,
+        )
+    except BacktestRunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return BacktestEvaluationAuditListResponse(
+        evaluations=tuple(
+            to_evaluation_audit_response(
+                evaluation,
+                fold_number,
+            )
+            for evaluation, fold_number in rows
+        ),
         total=total,
         limit=limit,
         offset=offset,

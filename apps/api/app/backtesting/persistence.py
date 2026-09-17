@@ -152,6 +152,58 @@ class BacktestPersistenceService:
 
         return runs, total
 
+    async def list_evaluations(
+        self,
+        session: AsyncSession,
+        backtest_id: UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[tuple[BacktestEvaluation, int], int]:
+        """Retrieve persisted evaluations for a backtest with fold numbers."""
+
+        count_result = await session.execute(
+            select(func.count())
+            .select_from(BacktestEvaluation)
+            .join(
+                BacktestFold,
+                BacktestEvaluation.fold_id == BacktestFold.id,
+            )
+            .where(
+                BacktestFold.backtest_id == backtest_id,
+            ),
+        )
+
+        total = int(count_result.scalar_one())
+
+        if total == 0 or offset >= total:
+            return (), total
+
+        result = await session.execute(
+            select(
+                BacktestEvaluation,
+                BacktestFold.fold_number,
+            )
+            .join(
+                BacktestFold,
+                BacktestEvaluation.fold_id == BacktestFold.id,
+            )
+            .where(
+                BacktestFold.backtest_id == backtest_id,
+            )
+            .order_by(
+                BacktestFold.fold_number,
+                BacktestEvaluation.signal_created_at,
+                BacktestEvaluation.id,
+            )
+            .offset(offset)
+            .limit(limit),
+        )
+
+        rows = tuple(result.all())
+
+        return rows, total
+
     async def get_execution(
         self,
         session: AsyncSession,

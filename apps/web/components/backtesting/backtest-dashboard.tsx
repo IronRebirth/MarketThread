@@ -4,10 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   BacktestApiError,
+  fetchBacktestEvaluations,
   fetchBacktestPerformanceReportById,
   fetchBacktestProvenance,
   fetchBacktestRuns,
   fetchLatestBacktestPerformanceReport,
+  type BacktestEvaluationAudit,
   type BacktestPerformanceReport,
   type BacktestProvenance,
   type BacktestRunResponse,
@@ -17,6 +19,8 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 
 type Report = BacktestPerformanceReport;
+
+const EVALUATIONS_PAGE_SIZE = 50;
 
 function QualityBadge({ state }: { state: string }) {
   const variant =
@@ -59,6 +63,14 @@ function formatPercentage(value: number | null) {
   return `${value.toFixed(2)}%`;
 }
 
+function formatConfidence(value: number | null) {
+  if (value === null) {
+    return "—";
+  }
+
+  return value.toFixed(3);
+}
+
 function formatQualityState(state: string) {
   return state.replaceAll("_", " ");
 }
@@ -93,6 +105,22 @@ function getAlternativeRunId(
   );
 }
 
+function getEvaluationStatusVariant(status: string) {
+  if (status === "valid" || status === "accepted") {
+    return "positive" as const;
+  }
+
+  if (
+    status === "rejected" ||
+    status === "invalid" ||
+    status === "temporal_error"
+  ) {
+    return "warning" as const;
+  }
+
+  return "neutral" as const;
+}
+
 export function BacktestDashboard() {
   const [report, setReport] = useState<Report | null>(null);
   const [provenance, setProvenance] = useState<BacktestProvenance | null>(
@@ -103,6 +131,10 @@ export function BacktestDashboard() {
     useState<BacktestPerformanceReport | null>(null);
   const [comparisonProvenance, setComparisonProvenance] =
     useState<BacktestProvenance | null>(null);
+
+  const [evaluations, setEvaluations] = useState<BacktestEvaluationAudit[]>([]);
+  const [totalEvaluations, setTotalEvaluations] = useState(0);
+  const [evaluationOffset, setEvaluationOffset] = useState(0);
 
   const [runs, setRuns] = useState<BacktestRunResponse[]>([]);
   const [totalRuns, setTotalRuns] = useState(0);
@@ -116,6 +148,7 @@ export function BacktestDashboard() {
   const [isRunLoading, setIsRunLoading] = useState(false);
   const [isProvenanceLoading, setIsProvenanceLoading] = useState(false);
   const [isComparisonLoading, setIsComparisonLoading] = useState(false);
+  const [isEvaluationsLoading, setIsEvaluationsLoading] = useState(false);
 
   const [provenanceUnavailable, setProvenanceUnavailable] = useState(false);
   const [comparisonProvenanceUnavailable, setComparisonProvenanceUnavailable] =
@@ -129,6 +162,9 @@ export function BacktestDashboard() {
     string | null
   >(null);
   const [comparisonErrorMessage, setComparisonErrorMessage] = useState<
+    string | null
+  >(null);
+  const [evaluationsErrorMessage, setEvaluationsErrorMessage] = useState<
     string | null
   >(null);
 
@@ -156,6 +192,37 @@ export function BacktestDashboard() {
       setIsProvenanceLoading(false);
     }
   }, []);
+
+  const loadEvaluations = useCallback(
+    async (backtestId: string, offset = 0) => {
+      setIsEvaluationsLoading(true);
+      setEvaluationsErrorMessage(null);
+
+      try {
+        const result = await fetchBacktestEvaluations(
+          backtestId,
+          EVALUATIONS_PAGE_SIZE,
+          offset,
+        );
+
+        setEvaluations(result.evaluations);
+        setTotalEvaluations(result.total);
+        setEvaluationOffset(result.offset);
+      } catch (error) {
+        setEvaluations([]);
+        setTotalEvaluations(0);
+        setEvaluationOffset(0);
+        setEvaluationsErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "The backtest evaluations could not be loaded.",
+        );
+      } finally {
+        setIsEvaluationsLoading(false);
+      }
+    },
+    [],
+  );
 
   const loadComparison = useCallback(async (backtestId: string) => {
     setIsComparisonLoading(true);
@@ -219,7 +286,11 @@ export function BacktestDashboard() {
           await fetchBacktestPerformanceReportById(backtestId);
 
         setReport(nextReport);
-        await loadProvenance(backtestId);
+
+        await Promise.all([
+          loadProvenance(backtestId),
+          loadEvaluations(backtestId),
+        ]);
 
         if (nextComparisonId) {
           await loadComparison(nextComparisonId);
@@ -234,6 +305,10 @@ export function BacktestDashboard() {
         setProvenance(null);
         setProvenanceUnavailable(false);
         setProvenanceErrorMessage(null);
+        setEvaluations([]);
+        setTotalEvaluations(0);
+        setEvaluationOffset(0);
+        setEvaluationsErrorMessage(null);
 
         setErrorMessage(
           error instanceof Error
@@ -247,6 +322,7 @@ export function BacktestDashboard() {
     [
       comparisonRunId,
       loadComparison,
+      loadEvaluations,
       loadProvenance,
       runs,
     ],
@@ -268,6 +344,10 @@ export function BacktestDashboard() {
     setProvenance(null);
     setProvenanceUnavailable(false);
     setProvenanceErrorMessage(null);
+    setEvaluations([]);
+    setTotalEvaluations(0);
+    setEvaluationOffset(0);
+    setEvaluationsErrorMessage(null);
 
     const [latestResult, historyResult] = await Promise.allSettled([
       fetchLatestBacktestPerformanceReport(),
@@ -314,13 +394,16 @@ export function BacktestDashboard() {
     setIsLoading(false);
 
     if (latestReport) {
-      await loadProvenance(latestReport.backtest_id);
+      await Promise.all([
+        loadProvenance(latestReport.backtest_id),
+        loadEvaluations(latestReport.backtest_id),
+      ]);
 
       if (nextComparisonId) {
         await loadComparison(nextComparisonId);
       }
     }
-  }, [loadComparison, loadProvenance]);
+  }, [loadComparison, loadEvaluations, loadProvenance]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -353,6 +436,32 @@ export function BacktestDashboard() {
     void loadComparison(backtestId);
   };
 
+  const handlePreviousEvaluations = () => {
+    if (evaluationOffset === 0 || isEvaluationsLoading || !selectedBacktestId) {
+      return;
+    }
+
+    void loadEvaluations(
+      selectedBacktestId,
+      Math.max(0, evaluationOffset - EVALUATIONS_PAGE_SIZE),
+    );
+  };
+
+  const handleNextEvaluations = () => {
+    if (
+      isEvaluationsLoading ||
+      !selectedBacktestId ||
+      evaluationOffset + evaluations.length >= totalEvaluations
+    ) {
+      return;
+    }
+
+    void loadEvaluations(
+      selectedBacktestId,
+      evaluationOffset + EVALUATIONS_PAGE_SIZE,
+    );
+  };
+
   const selectedRun =
     runs.find((run) => run.backtest_id === selectedBacktestId) ?? null;
 
@@ -377,15 +486,20 @@ export function BacktestDashboard() {
 
             <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
               Evaluate historical signal performance across time horizons,
-              recommendation states, signal strength, evidence quality, and
-              persisted runs.
+              recommendation states, signal strength, evidence quality,
+              persisted runs, and evaluation-level audit records.
             </p>
           </div>
 
           <Button
             variant="secondary"
             onClick={() => void loadDashboard()}
-            disabled={isLoading || isRunLoading || isComparisonLoading}
+            disabled={
+              isLoading ||
+              isRunLoading ||
+              isComparisonLoading ||
+              isEvaluationsLoading
+            }
           >
             {isLoading ? "Loading report" : "Refresh report"}
           </Button>
@@ -406,7 +520,7 @@ export function BacktestDashboard() {
       {!isLoading && runs.length > 0 && (
         <Card
           title="Run history"
-          description="Select a persisted backtest execution to inspect its report and provenance."
+          description="Select a persisted backtest execution to inspect its report, provenance, and evaluation audit."
         >
           <div className="flex flex-col gap-5">
             <label
@@ -771,6 +885,16 @@ export function BacktestDashboard() {
             </Card>
           </section>
 
+          <EvaluationAuditCard
+            evaluations={evaluations}
+            total={totalEvaluations}
+            offset={evaluationOffset}
+            isLoading={isEvaluationsLoading}
+            errorMessage={evaluationsErrorMessage}
+            onPrevious={handlePreviousEvaluations}
+            onNext={handleNextEvaluations}
+          />
+
           <ProvenanceCard
             provenance={provenance}
             isLoading={isProvenanceLoading}
@@ -814,14 +938,221 @@ export function BacktestDashboard() {
               />
 
               <Interpretation
-                title="Quality"
-                description="Indicates whether the amount and coverage of evidence are strong enough to support interpretation."
+                title="Audit"
+                description="Shows persisted evaluation records used to construct aggregate backtest results."
               />
             </div>
           </Card>
         </>
       )}
     </div>
+  );
+}
+
+function EvaluationAuditCard({
+  evaluations,
+  total,
+  offset,
+  isLoading,
+  errorMessage,
+  onPrevious,
+  onNext,
+}: {
+  evaluations: BacktestEvaluationAudit[];
+  total: number;
+  offset: number;
+  isLoading: boolean;
+  errorMessage: string | null;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <Card
+      title="Evaluation audit"
+      description="Persisted evaluation-level records for the selected backtest run."
+    >
+      <div className="flex flex-col gap-5">
+        {isLoading && (
+          <div className="overflow-hidden rounded-md border border-border">
+            <div className="h-64 animate-pulse bg-surface-muted" />
+          </div>
+        )}
+
+        {!isLoading && errorMessage && (
+          <div className="rounded-md border border-border bg-surface-subtle p-4">
+            <p className="text-sm leading-6 text-text-secondary">
+              {errorMessage}
+            </p>
+          </div>
+        )}
+
+        {!isLoading && !errorMessage && evaluations.length === 0 && (
+          <div className="rounded-md border border-border bg-surface-subtle p-6">
+            <p className="text-sm font-medium text-text-primary">
+              No evaluation records are available.
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              The selected backtest does not currently have persisted
+              evaluation-level records.
+            </p>
+          </div>
+        )}
+
+        {!isLoading && !errorMessage && evaluations.length > 0 && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1500px] text-left">
+                <thead>
+                  <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-muted">
+                    <th className="px-2 py-3 font-medium">Fold</th>
+                    <th className="px-2 py-3 font-medium">Created</th>
+                    <th className="px-2 py-3 font-medium">Status</th>
+                    <th className="px-2 py-3 font-medium">Temporal</th>
+                    <th className="px-2 py-3 font-medium">Signal</th>
+                    <th className="px-2 py-3 font-medium">Event</th>
+                    <th className="px-2 py-3 font-medium">Direction</th>
+                    <th className="px-2 py-3 font-medium">Observed</th>
+                    <th className="px-2 py-3 font-medium">Strength</th>
+                    <th className="px-2 py-3 font-medium">Recommendation</th>
+                    <th className="px-2 py-3 font-medium">Confidence</th>
+                    <th className="px-2 py-3 font-medium">Horizon</th>
+                    <th className="px-2 py-3 font-medium">Forward return</th>
+                    <th className="px-2 py-3 font-medium">Relative return</th>
+                    <th className="px-2 py-3 font-medium">Correct</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-border">
+                  {evaluations.map((evaluation) => (
+                    <EvaluationAuditRow
+                      key={evaluation.evaluation_id}
+                      evaluation={evaluation}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-text-secondary">
+                Showing {offset + 1}–{offset + evaluations.length} of {total}{" "}
+                evaluations.
+              </p>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={onPrevious}
+                  disabled={offset === 0}
+                >
+                  Previous
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  onClick={onNext}
+                  disabled={offset + evaluations.length >= total}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function EvaluationAuditRow({
+  evaluation,
+}: {
+  evaluation: BacktestEvaluationAudit;
+}) {
+  return (
+    <tr>
+      <td className="px-2 py-4 text-sm font-medium text-text-primary">
+        {evaluation.fold_number}
+      </td>
+
+      <td className="whitespace-nowrap px-2 py-4 text-sm text-text-secondary">
+        {formatTimestamp(evaluation.signal_created_at)}
+      </td>
+
+      <td className="px-2 py-4">
+        <Badge variant={getEvaluationStatusVariant(evaluation.status)}>
+          {formatQualityState(evaluation.status)}
+        </Badge>
+      </td>
+
+      <td className="px-2 py-4">
+        {evaluation.temporal_error ? (
+          <span
+            className="text-sm font-medium text-warning"
+            title={evaluation.temporal_error}
+          >
+            {formatQualityState(evaluation.temporal_error)}
+          </span>
+        ) : (
+          <span className="text-sm text-text-secondary">none</span>
+        )}
+      </td>
+
+      <td className="px-2 py-4">
+        <code className="text-xs text-text-secondary">
+          {evaluation.signal_id}
+        </code>
+      </td>
+
+      <td className="px-2 py-4">
+        <code className="text-xs text-text-secondary">
+          {evaluation.event_id}
+        </code>
+      </td>
+
+      <td className="px-2 py-4 text-sm text-text-primary">
+        {formatQualityState(evaluation.signal_direction)}
+      </td>
+
+      <td className="px-2 py-4 text-sm text-text-secondary">
+        {formatQualityState(evaluation.observed_direction)}
+      </td>
+
+      <td className="px-2 py-4 text-sm text-text-primary">
+        {formatQualityState(evaluation.signal_strength)}
+      </td>
+
+      <td className="px-2 py-4 text-sm text-text-primary">
+        {formatQualityState(evaluation.recommendation_state)}
+      </td>
+
+      <td className="px-2 py-4 text-sm text-text-primary">
+        {formatConfidence(evaluation.signal_confidence)}
+      </td>
+
+      <td className="px-2 py-4 text-sm font-medium text-text-primary">
+        {evaluation.horizon ?? "—"}
+      </td>
+
+      <td className="px-2 py-4 text-sm text-text-primary">
+        {formatPercentage(evaluation.forward_return_pct)}
+      </td>
+
+      <td className="px-2 py-4 text-sm text-text-primary">
+        {formatPercentage(evaluation.relative_return_pct)}
+      </td>
+
+      <td className="px-2 py-4">
+        {evaluation.direction_correct === null ? (
+          <span className="text-sm text-text-muted">—</span>
+        ) : evaluation.direction_correct ? (
+          <Badge variant="positive">yes</Badge>
+        ) : (
+          <Badge variant="warning">no</Badge>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -1139,7 +1470,7 @@ function ComparisonProvenanceList({
           {items.map((item) => (
             <div
               key={item}
-              className="rounded-md border border-border bg-surface bg-opacity-40 px-3 py-2 text-sm leading-6 text-text-secondary"
+              className="rounded-md border border-border bg-surface-subtle px-3 py-2 text-sm leading-6 text-text-secondary"
             >
               {item}
             </div>

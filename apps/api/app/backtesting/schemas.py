@@ -87,6 +87,35 @@ class BacktestRunHistoryResponse(BaseModel):
     offset: int
 
 
+class BacktestEvaluationAuditResponse(BaseModel):
+    evaluation_id: UUID
+    fold_number: int
+    signal_id: UUID
+    event_id: UUID
+    instrument_id: UUID
+    signal_created_at: datetime
+    status: str
+    temporal_error: str | None = None
+    signal_direction: str
+    observed_direction: str
+    signal_strength: str
+    recommendation_state: str
+    signal_confidence: float | None = None
+    horizon: str | None = None
+    forward_return_pct: float | None = None
+    benchmark_return_pct: float | None = None
+    relative_return_pct: float | None = None
+    direction_correct: bool | None = None
+    notes: tuple[str, ...] = ()
+
+
+class BacktestEvaluationAuditListResponse(BaseModel):
+    evaluations: tuple[BacktestEvaluationAuditResponse, ...]
+    total: int
+    limit: int
+    offset: int
+
+
 class BacktestExecutionResponse(BaseModel):
     run: BacktestRunResponse
     report: "BacktestPerformanceReportResponse"
@@ -158,6 +187,33 @@ def to_run_response(
         rejected_evaluation_count=run.rejected_evaluation_count,
         created_at=run.created_at,
         completed_at=run.completed_at,
+    )
+
+
+def to_evaluation_audit_response(
+    evaluation: object,
+    fold_number: int,
+) -> BacktestEvaluationAuditResponse:
+    return BacktestEvaluationAuditResponse(
+        evaluation_id=evaluation.id,
+        fold_number=fold_number,
+        signal_id=evaluation.signal_id,
+        event_id=evaluation.event_id,
+        instrument_id=evaluation.instrument_id,
+        signal_created_at=evaluation.signal_created_at,
+        status=evaluation.status,
+        temporal_error=evaluation.temporal_error,
+        signal_direction=evaluation.signal_direction,
+        observed_direction=evaluation.observed_direction,
+        signal_strength=evaluation.signal_strength,
+        recommendation_state=evaluation.recommendation_state,
+        signal_confidence=evaluation.signal_confidence,
+        horizon=evaluation.horizon,
+        forward_return_pct=evaluation.forward_return_pct,
+        benchmark_return_pct=evaluation.benchmark_return_pct,
+        relative_return_pct=evaluation.relative_return_pct,
+        direction_correct=evaluation.direction_correct,
+        notes=tuple(evaluation.notes),
     )
 
 

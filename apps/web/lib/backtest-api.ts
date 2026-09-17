@@ -73,11 +73,6 @@ export type BacktestProvenance = {
   invalidation_conditions: string[];
 };
 
-export type BacktestExecutionPayload = {
-  backtest_id: string;
-  fold_results?: unknown[];
-};
-
 export type BacktestRunResponse = {
   backtest_id: string;
   valid: boolean;
@@ -93,6 +88,42 @@ export type BacktestRunHistoryResponse = {
   total: number;
   limit: number;
   offset: number;
+};
+
+export type BacktestEvaluationStatus = string;
+
+export type BacktestEvaluationAudit = {
+  evaluation_id: string;
+  fold_number: number;
+  signal_id: string;
+  event_id: string;
+  instrument_id: string;
+  signal_created_at: string;
+  status: BacktestEvaluationStatus;
+  temporal_error: string | null;
+  signal_direction: string;
+  observed_direction: string;
+  signal_strength: string;
+  recommendation_state: string;
+  signal_confidence: number | null;
+  horizon: string | null;
+  forward_return_pct: number | null;
+  benchmark_return_pct: number | null;
+  relative_return_pct: number | null;
+  direction_correct: boolean | null;
+  notes: string[];
+};
+
+export type BacktestEvaluationAuditResponse = {
+  evaluations: BacktestEvaluationAudit[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type BacktestExecutionPayload = {
+  backtest_id: string;
+  fold_results?: unknown[];
 };
 
 export class BacktestApiError extends Error {
@@ -174,6 +205,16 @@ export async function fetchBacktestRuns(
 ): Promise<BacktestRunHistoryResponse> {
   return getJson<BacktestRunHistoryResponse>(
     `${API_BASE_URL}/backtests/runs?limit=${limit}&offset=${offset}`,
+  );
+}
+
+export async function fetchBacktestEvaluations(
+  backtestId: string,
+  limit = 50,
+  offset = 0,
+): Promise<BacktestEvaluationAuditResponse> {
+  return getJson<BacktestEvaluationAuditResponse>(
+    `${API_BASE_URL}/backtests/runs/${backtestId}/evaluations?limit=${limit}&offset=${offset}`,
   );
 }
 
