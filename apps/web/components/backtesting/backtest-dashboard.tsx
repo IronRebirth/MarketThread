@@ -12,12 +12,17 @@ import {
   type BacktestEvaluationAudit,
   type BacktestPerformanceReport,
   type BacktestProvenance,
+  type BacktestRunFilters,
   type BacktestRunResponse,
 } from "../../lib/backtest-api";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { BacktestRunConfigurationCard } from "./backtest-run-configuration";
+import {
+  BacktestRunFilters as BacktestRunFiltersPanel,
+  type BacktestRunStatusFilter,
+} from "./backtest-run-filters";
 
 type Report = BacktestPerformanceReport;
 
@@ -139,6 +144,10 @@ export function BacktestDashboard() {
 
   const [runs, setRuns] = useState<BacktestRunResponse[]>([]);
   const [totalRuns, setTotalRuns] = useState(0);
+  const [runStatusFilter, setRunStatusFilter] =
+    useState<BacktestRunStatusFilter>("all");
+  const [completedAfter, setCompletedAfter] = useState("");
+  const [completedBefore, setCompletedBefore] = useState("");
 
   const [selectedBacktestId, setSelectedBacktestId] = useState<string | null>(
     null,
@@ -147,6 +156,7 @@ export function BacktestDashboard() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRunLoading, setIsRunLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isProvenanceLoading, setIsProvenanceLoading] = useState(false);
   const [isComparisonLoading, setIsComparisonLoading] = useState(false);
   const [isEvaluationsLoading, setIsEvaluationsLoading] = useState(false);
@@ -159,6 +169,9 @@ export function BacktestDashboard() {
   const [historyErrorMessage, setHistoryErrorMessage] = useState<string | null>(
     null,
   );
+  const [runFilterErrorMessage, setRunFilterErrorMessage] = useState<
+    string | null
+  >(null);
   const [provenanceErrorMessage, setProvenanceErrorMessage] = useState<
     string | null
   >(null);
@@ -270,15 +283,21 @@ export function BacktestDashboard() {
   }, []);
 
   const loadRun = useCallback(
-    async (backtestId: string) => {
+    async (
+      backtestId: string,
+      availableRuns: BacktestRunResponse[] = runs,
+    ) => {
       setIsRunLoading(true);
       setErrorMessage(null);
       setSelectedBacktestId(backtestId);
 
       let nextComparisonId = comparisonRunId;
+      const comparisonIsAvailable =
+        nextComparisonId !== null &&
+        availableRuns.some((run) => run.backtest_id === nextComparisonId);
 
-      if (nextComparisonId === backtestId) {
-        nextComparisonId = getAlternativeRunId(runs, backtestId);
+      if (!comparisonIsAvailable || nextComparisonId === backtestId) {
+        nextComparisonId = getAlternativeRunId(availableRuns, backtestId);
         setComparisonRunId(nextComparisonId);
       }
 
@@ -336,6 +355,10 @@ export function BacktestDashboard() {
     setReport(null);
     setRuns([]);
     setTotalRuns(0);
+    setRunStatusFilter("all");
+    setCompletedAfter("");
+    setCompletedBefore("");
+    setRunFilterErrorMessage(null);
     setSelectedBacktestId(null);
     setComparisonRunId(null);
     setComparisonReport(null);
@@ -437,6 +460,137 @@ export function BacktestDashboard() {
     void loadComparison(backtestId);
   };
 
+  const loadRunHistory = useCallback(
+    async (filters: BacktestRunFilters = {}) => {
+      setIsHistoryLoading(true);
+      setRunFilterErrorMessage(null);
+
+      try {
+        const result = await fetchBacktestRuns(20, 0, filters);
+
+        setRuns(result.runs);
+        setTotalRuns(result.total);
+
+        return result.runs;
+      } catch (error) {
+        setRunFilterErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "The filtered backtest run history could not be loaded.",
+        );
+
+        return null;
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    },
+    [],
+  );
+
+  const clearSelectedRun = () => {
+    setSelectedBacktestId(null);
+    setComparisonRunId(null);
+    setReport(null);
+    setProvenance(null);
+    setProvenanceUnavailable(false);
+    setProvenanceErrorMessage(null);
+    setComparisonReport(null);
+    setComparisonProvenance(null);
+    setComparisonProvenanceUnavailable(false);
+    setComparisonErrorMessage(null);
+    setEvaluations([]);
+    setTotalEvaluations(0);
+    setEvaluationOffset(0);
+    setEvaluationsErrorMessage(null);
+    setErrorMessage(null);
+  };
+
+  const toLocalDayBoundary = (value: string, endOfDay: boolean) => {
+    const [year, month, day] = value.split("-").map(Number);
+
+    const date = new Date(
+      year,
+      month - 1,
+      day,
+      endOfDay ? 23 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 999 : 0,
+    );
+
+    return date.toISOString();
+  };
+
+  const handleApplyRunFilters = async () => {
+    setRunFilterErrorMessage(null);
+
+    if (
+      completedAfter &&
+      completedBefore &&
+      completedAfter > completedBefore
+    ) {
+      setRunFilterErrorMessage(
+        "The completion start date must be earlier than or equal to the completion end date.",
+      );
+      return;
+    }
+
+    const filters: BacktestRunFilters = {};
+
+    if (runStatusFilter === "valid") {
+      filters.valid = true;
+    } else if (runStatusFilter === "invalid") {
+      filters.valid = false;
+    }
+
+    if (completedAfter) {
+      filters.completedAfter = toLocalDayBoundary(completedAfter, false);
+    }
+
+    if (completedBefore) {
+      filters.completedBefore = toLocalDayBoundary(completedBefore, true);
+    }
+
+    const nextRuns = await loadRunHistory(filters);
+
+    if (nextRuns === null) {
+      return;
+    }
+
+    if (nextRuns.length === 0) {
+      clearSelectedRun();
+      return;
+    }
+
+    const nextSelectedId =
+      selectedBacktestId &&
+      nextRuns.some((run) => run.backtest_id === selectedBacktestId)
+        ? selectedBacktestId
+        : nextRuns[0].backtest_id;
+
+    void loadRun(nextSelectedId, nextRuns);
+  };
+
+  const handleResetRunFilters = async () => {
+    setRunStatusFilter("all");
+    setCompletedAfter("");
+    setCompletedBefore("");
+    setRunFilterErrorMessage(null);
+
+    const nextRuns = await loadRunHistory();
+
+    if (nextRuns === null) {
+      return;
+    }
+
+    if (nextRuns.length === 0) {
+      clearSelectedRun();
+      return;
+    }
+
+    void loadRun(nextRuns[0].backtest_id, nextRuns);
+  };
+
   const handlePreviousEvaluations = () => {
     if (evaluationOffset === 0 || isEvaluationsLoading || !selectedBacktestId) {
       return;
@@ -518,46 +672,80 @@ export function BacktestDashboard() {
         </Card>
       )}
 
-      {!isLoading && runs.length > 0 && (
+      {!isLoading && !historyErrorMessage && (
         <Card
           title="Run history"
-          description="Select a persisted backtest execution to inspect its report, provenance, and evaluation audit."
+          description="Filter persisted executions, then select a run to inspect its report, configuration, provenance, and evaluation audit."
         >
           <div className="flex flex-col gap-5">
-            <label
-              htmlFor="backtest-run"
-              className="text-sm font-medium text-text-primary"
-            >
-              Selected run
-            </label>
+            <BacktestRunFiltersPanel
+              status={runStatusFilter}
+              completedAfter={completedAfter}
+              completedBefore={completedBefore}
+              isLoading={isHistoryLoading || isRunLoading}
+              errorMessage={runFilterErrorMessage}
+              onStatusChange={setRunStatusFilter}
+              onCompletedAfterChange={setCompletedAfter}
+              onCompletedBeforeChange={setCompletedBefore}
+              onApply={() => void handleApplyRunFilters()}
+              onReset={() => void handleResetRunFilters()}
+            />
 
-            <select
-              id="backtest-run"
-              value={selectedBacktestId ?? ""}
-              onChange={(event) => handleRunSelection(event.target.value)}
-              disabled={isRunLoading}
-              className="w-full rounded-md border border-border bg-surface-subtle px-3 py-2.5 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {runs.map((run) => (
-                <option key={run.backtest_id} value={run.backtest_id}>
-                  {formatRunLabel(run)}
-                </option>
-              ))}
-            </select>
+            {runs.length > 0 ? (
+              <>
+                <div className="flex flex-col gap-2 border-t border-border pt-5">
+                  <label
+                    htmlFor="backtest-run"
+                    className="text-sm font-medium text-text-primary"
+                  >
+                    Selected run
+                  </label>
 
-            {selectedBacktestId && (
-              <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-                {runs.find(
-                  (run) => run.backtest_id === selectedBacktestId,
-                )?.valid ? (
-                  <Badge variant="positive">Valid run</Badge>
-                ) : (
-                  <Badge variant="warning">Run contains rejections</Badge>
+                  <select
+                    id="backtest-run"
+                    value={selectedBacktestId ?? ""}
+                    onChange={(event) => handleRunSelection(event.target.value)}
+                    disabled={isRunLoading || isHistoryLoading}
+                    className="w-full rounded-md border border-border bg-surface-subtle px-3 py-2.5 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {runs.map((run) => (
+                      <option key={run.backtest_id} value={run.backtest_id}>
+                        {formatRunLabel(run)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedBacktestId && (
+                  <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                    {runs.find(
+                      (run) => run.backtest_id === selectedBacktestId,
+                    )?.valid ? (
+                      <Badge variant="positive">Valid run</Badge>
+                    ) : (
+                      <Badge variant="warning">
+                        Run contains rejections
+                      </Badge>
+                    )}
+
+                    <span className="text-sm text-text-secondary">
+                      {selectedBacktestId}
+                    </span>
+                  </div>
                 )}
+              </>
+            ) : (
+              <div className="border-t border-border pt-5">
+                <div className="rounded-md border border-border bg-surface-subtle p-5">
+                  <p className="text-sm font-medium text-text-primary">
+                    No persisted runs match the current filters.
+                  </p>
 
-                <span className="text-sm text-text-secondary">
-                  {selectedBacktestId}
-                </span>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">
+                    Adjust the status or completion date range, or reset the
+                    filters to view the full persisted run history.
+                  </p>
+                </div>
               </div>
             )}
 

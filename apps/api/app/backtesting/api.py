@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -235,7 +236,7 @@ async def create_backtest_run(
     summary="List persisted backtest runs",
     description=(
         "Returns persisted backtest runs in reverse completion order with "
-        "pagination metadata and any available run configuration."
+        "optional validity and completion-time filters."
     ),
 )
 async def list_backtest_runs(
@@ -251,11 +252,39 @@ async def list_backtest_runs(
         ge=0,
         description="Number of runs to skip.",
     ),
+    valid: bool | None = Query(
+        default=None,
+        description=(
+            "Optional validity filter. True returns valid runs; false returns "
+            "runs that were not valid."
+        ),
+    ),
+    completed_after: Annotated[
+        datetime | None,
+        Query(description="Optional inclusive lower bound for run completion time."),
+    ] = None,
+    completed_before: Annotated[
+        datetime | None,
+        Query(description="Optional inclusive upper bound for run completion time."),
+    ] = None,
 ) -> BacktestRunHistoryResponse:
+    if (
+        completed_after is not None
+        and completed_before is not None
+        and completed_after > completed_before
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="completed_after must be earlier than or equal to completed_before.",
+        )
+
     runs, total = await _persistence_service.list_runs(
         session,
         limit=limit,
         offset=offset,
+        valid=valid,
+        completed_after=completed_after,
+        completed_before=completed_before,
     )
 
     return BacktestRunHistoryResponse(

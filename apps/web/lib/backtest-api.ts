@@ -102,6 +102,12 @@ export type BacktestRunHistoryResponse = {
   offset: number;
 };
 
+export type BacktestRunFilters = {
+  valid?: boolean;
+  completedAfter?: string;
+  completedBefore?: string;
+};
+
 export type BacktestEvaluationStatus = string;
 
 export type BacktestEvaluationAudit = {
@@ -214,9 +220,27 @@ export async function fetchBacktestProvenance(
 export async function fetchBacktestRuns(
   limit = 20,
   offset = 0,
+  filters: BacktestRunFilters = {},
 ): Promise<BacktestRunHistoryResponse> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+
+  if (filters.valid !== undefined) {
+    params.set("valid", String(filters.valid));
+  }
+
+  if (filters.completedAfter) {
+    params.set("completed_after", filters.completedAfter);
+  }
+
+  if (filters.completedBefore) {
+    params.set("completed_before", filters.completedBefore);
+  }
+
   return getJson<BacktestRunHistoryResponse>(
-    `${API_BASE_URL}/backtests/runs?limit=${limit}&offset=${offset}`,
+    `${API_BASE_URL}/backtests/runs?${params.toString()}`,
   );
 }
 
