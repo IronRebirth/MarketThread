@@ -84,25 +84,51 @@ function formatRunLabel(run: BacktestRunResponse) {
   return `${formatTimestamp(run.completed_at)} · ${run.evaluation_count} evaluations`;
 }
 
+function getAlternativeRunId(
+  runs: BacktestRunResponse[],
+  excludedId: string | null,
+) {
+  return (
+    runs.find((run) => run.backtest_id !== excludedId)?.backtest_id ?? null
+  );
+}
+
 export function BacktestDashboard() {
   const [report, setReport] = useState<Report | null>(null);
   const [provenance, setProvenance] = useState<BacktestProvenance | null>(
     null,
   );
+
+  const [comparisonReport, setComparisonReport] =
+    useState<BacktestPerformanceReport | null>(null);
+  const [comparisonProvenance, setComparisonProvenance] =
+    useState<BacktestProvenance | null>(null);
+
   const [runs, setRuns] = useState<BacktestRunResponse[]>([]);
   const [totalRuns, setTotalRuns] = useState(0);
+
   const [selectedBacktestId, setSelectedBacktestId] = useState<string | null>(
     null,
   );
+  const [comparisonRunId, setComparisonRunId] = useState<string | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isRunLoading, setIsRunLoading] = useState(false);
   const [isProvenanceLoading, setIsProvenanceLoading] = useState(false);
+  const [isComparisonLoading, setIsComparisonLoading] = useState(false);
+
   const [provenanceUnavailable, setProvenanceUnavailable] = useState(false);
+  const [comparisonProvenanceUnavailable, setComparisonProvenanceUnavailable] =
+    useState(false);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [historyErrorMessage, setHistoryErrorMessage] = useState<string | null>(
     null,
   );
   const [provenanceErrorMessage, setProvenanceErrorMessage] = useState<
+    string | null
+  >(null);
+  const [comparisonErrorMessage, setComparisonErrorMessage] = useState<
     string | null
   >(null);
 
@@ -131,11 +157,62 @@ export function BacktestDashboard() {
     }
   }, []);
 
+  const loadComparison = useCallback(async (backtestId: string) => {
+    setIsComparisonLoading(true);
+    setComparisonErrorMessage(null);
+    setComparisonReport(null);
+    setComparisonProvenance(null);
+    setComparisonProvenanceUnavailable(false);
+
+    const [reportResult, provenanceResult] = await Promise.allSettled([
+      fetchBacktestPerformanceReportById(backtestId),
+      fetchBacktestProvenance(backtestId),
+    ]);
+
+    if (reportResult.status === "fulfilled") {
+      setComparisonReport(reportResult.value);
+    } else {
+      setComparisonErrorMessage(
+        reportResult.reason instanceof Error
+          ? reportResult.reason.message
+          : "The comparison backtest could not be loaded.",
+      );
+    }
+
+    if (provenanceResult.status === "fulfilled") {
+      setComparisonProvenance(provenanceResult.value);
+    } else if (
+      provenanceResult.reason instanceof BacktestApiError &&
+      provenanceResult.reason.status === 404
+    ) {
+      setComparisonProvenanceUnavailable(true);
+    } else {
+      setComparisonErrorMessage((currentMessage) => {
+        if (currentMessage) {
+          return currentMessage;
+        }
+
+        return provenanceResult.reason instanceof Error
+          ? provenanceResult.reason.message
+          : "The comparison provenance could not be loaded.";
+      });
+    }
+
+    setIsComparisonLoading(false);
+  }, []);
+
   const loadRun = useCallback(
     async (backtestId: string) => {
       setIsRunLoading(true);
       setErrorMessage(null);
       setSelectedBacktestId(backtestId);
+
+      let nextComparisonId = comparisonRunId;
+
+      if (nextComparisonId === backtestId) {
+        nextComparisonId = getAlternativeRunId(runs, backtestId);
+        setComparisonRunId(nextComparisonId);
+      }
 
       try {
         const nextReport =
@@ -143,12 +220,20 @@ export function BacktestDashboard() {
 
         setReport(nextReport);
         await loadProvenance(backtestId);
+
+        if (nextComparisonId) {
+          await loadComparison(nextComparisonId);
+        } else {
+          setComparisonReport(null);
+          setComparisonProvenance(null);
+          setComparisonProvenanceUnavailable(false);
+          setComparisonErrorMessage(null);
+        }
       } catch (error) {
         setReport(null);
         setProvenance(null);
         setProvenanceUnavailable(false);
         setProvenanceErrorMessage(null);
-        setIsProvenanceLoading(false);
 
         setErrorMessage(
           error instanceof Error
@@ -159,7 +244,12 @@ export function BacktestDashboard() {
         setIsRunLoading(false);
       }
     },
-    [loadProvenance],
+    [
+      comparisonRunId,
+      loadComparison,
+      loadProvenance,
+      runs,
+    ],
   );
 
   const loadDashboard = useCallback(async () => {
@@ -170,6 +260,11 @@ export function BacktestDashboard() {
     setRuns([]);
     setTotalRuns(0);
     setSelectedBacktestId(null);
+    setComparisonRunId(null);
+    setComparisonReport(null);
+    setComparisonProvenance(null);
+    setComparisonProvenanceUnavailable(false);
+    setComparisonErrorMessage(null);
     setProvenance(null);
     setProvenanceUnavailable(false);
     setProvenanceErrorMessage(null);
@@ -180,6 +275,8 @@ export function BacktestDashboard() {
     ]);
 
     let latestReport: BacktestPerformanceReport | null = null;
+    let nextRuns: BacktestRunResponse[] = [];
+    let nextComparisonId: string | null = null;
 
     if (latestResult.status === "fulfilled") {
       latestReport = latestResult.value;
@@ -194,8 +291,18 @@ export function BacktestDashboard() {
     }
 
     if (historyResult.status === "fulfilled") {
-      setRuns(historyResult.value.runs);
+      nextRuns = historyResult.value.runs;
+      setRuns(nextRuns);
       setTotalRuns(historyResult.value.total);
+
+      if (latestReport) {
+        nextComparisonId = getAlternativeRunId(
+          nextRuns,
+          latestReport.backtest_id,
+        );
+
+        setComparisonRunId(nextComparisonId);
+      }
     } else {
       setHistoryErrorMessage(
         historyResult.reason instanceof Error
@@ -208,8 +315,12 @@ export function BacktestDashboard() {
 
     if (latestReport) {
       await loadProvenance(latestReport.backtest_id);
+
+      if (nextComparisonId) {
+        await loadComparison(nextComparisonId);
+      }
     }
-  }, [loadProvenance]);
+  }, [loadComparison, loadProvenance]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -228,6 +339,25 @@ export function BacktestDashboard() {
 
     void loadRun(backtestId);
   };
+
+  const handleComparisonSelection = (backtestId: string) => {
+    if (
+      backtestId === selectedBacktestId ||
+      backtestId === comparisonRunId ||
+      isComparisonLoading
+    ) {
+      return;
+    }
+
+    setComparisonRunId(backtestId);
+    void loadComparison(backtestId);
+  };
+
+  const selectedRun =
+    runs.find((run) => run.backtest_id === selectedBacktestId) ?? null;
+
+  const comparisonRun =
+    runs.find((run) => run.backtest_id === comparisonRunId) ?? null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -255,7 +385,7 @@ export function BacktestDashboard() {
           <Button
             variant="secondary"
             onClick={() => void loadDashboard()}
-            disabled={isLoading || isRunLoading}
+            disabled={isLoading || isRunLoading || isComparisonLoading}
           >
             {isLoading ? "Loading report" : "Refresh report"}
           </Button>
@@ -319,6 +449,79 @@ export function BacktestDashboard() {
             <p className="text-xs leading-5 text-text-muted">
               Showing {runs.length} of {totalRuns} persisted runs.
             </p>
+          </div>
+        </Card>
+      )}
+
+      {!isLoading && runs.length > 1 && selectedBacktestId && (
+        <Card
+          title="Compare runs"
+          description="Compare the selected execution with another persisted historical run."
+        >
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="backtest-comparison-run"
+                className="text-sm font-medium text-text-primary"
+              >
+                Compare selected run with
+              </label>
+
+              <select
+                id="backtest-comparison-run"
+                value={comparisonRunId ?? ""}
+                onChange={(event) =>
+                  handleComparisonSelection(event.target.value)
+                }
+                disabled={isComparisonLoading}
+                className="w-full rounded-md border border-border bg-surface-subtle px-3 py-2.5 text-sm text-text-primary outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {runs
+                  .filter((run) => run.backtest_id !== selectedBacktestId)
+                  .map((run) => (
+                    <option key={run.backtest_id} value={run.backtest_id}>
+                      {formatRunLabel(run)}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {isComparisonLoading && (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {[1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="h-48 animate-pulse rounded-md bg-surface-muted"
+                  />
+                ))}
+              </div>
+            )}
+
+            {!isComparisonLoading && comparisonErrorMessage && (
+              <div className="rounded-md border border-border bg-surface-subtle p-4">
+                <p className="text-sm leading-6 text-text-secondary">
+                  {comparisonErrorMessage}
+                </p>
+              </div>
+            )}
+
+            {!isComparisonLoading &&
+              !comparisonErrorMessage &&
+              report &&
+              comparisonReport &&
+              comparisonRun && (
+                <RunComparison
+                  selectedRun={selectedRun}
+                  selectedReport={report}
+                  selectedProvenance={provenance}
+                  comparisonRun={comparisonRun}
+                  comparisonReport={comparisonReport}
+                  comparisonProvenance={comparisonProvenance}
+                  comparisonProvenanceUnavailable={
+                    comparisonProvenanceUnavailable
+                  }
+                />
+              )}
           </div>
         </Card>
       )}
@@ -617,6 +820,335 @@ export function BacktestDashboard() {
             </div>
           </Card>
         </>
+      )}
+    </div>
+  );
+}
+
+function RunComparison({
+  selectedRun,
+  selectedReport,
+  selectedProvenance,
+  comparisonRun,
+  comparisonReport,
+  comparisonProvenance,
+  comparisonProvenanceUnavailable,
+}: {
+  selectedRun: BacktestRunResponse | null;
+  selectedReport: BacktestPerformanceReport;
+  selectedProvenance: BacktestProvenance | null;
+  comparisonRun: BacktestRunResponse;
+  comparisonReport: BacktestPerformanceReport;
+  comparisonProvenance: BacktestProvenance | null;
+  comparisonProvenanceUnavailable: boolean;
+}) {
+  const horizonStates = Array.from(
+    new Set([
+      ...selectedReport.by_horizon.summaries.map((item) => item.state),
+      ...comparisonReport.by_horizon.summaries.map((item) => item.state),
+    ]),
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid gap-5 xl:grid-cols-2">
+        <ComparisonPanel
+          title="Selected run"
+          run={selectedRun}
+          report={selectedReport}
+          provenance={selectedProvenance}
+        />
+
+        <ComparisonPanel
+          title="Compared run"
+          run={comparisonRun}
+          report={comparisonReport}
+          provenance={comparisonProvenance}
+          provenanceUnavailable={comparisonProvenanceUnavailable}
+        />
+      </div>
+
+      <div className="border-t border-border pt-6">
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-sm font-semibold text-text-primary">
+              Horizon comparison
+            </p>
+
+            <p className="mt-1 text-sm leading-6 text-text-secondary">
+              Side-by-side historical observations for matching horizons.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-[0.08em] text-text-muted">
+                  <th className="px-2 py-3 font-medium">Horizon</th>
+                  <th className="px-2 py-3 font-medium">
+                    Selected evaluations
+                  </th>
+                  <th className="px-2 py-3 font-medium">
+                    Compared evaluations
+                  </th>
+                  <th className="px-2 py-3 font-medium">
+                    Selected accuracy
+                  </th>
+                  <th className="px-2 py-3 font-medium">
+                    Compared accuracy
+                  </th>
+                  <th className="px-2 py-3 font-medium">
+                    Selected relative return
+                  </th>
+                  <th className="px-2 py-3 font-medium">
+                    Compared relative return
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-border">
+                {horizonStates.map((state) => {
+                  const selectedSummary =
+                    selectedReport.by_horizon.summaries.find(
+                      (item) => item.state === state,
+                    );
+
+                  const comparisonSummary =
+                    comparisonReport.by_horizon.summaries.find(
+                      (item) => item.state === state,
+                    );
+
+                  return (
+                    <tr key={state}>
+                      <td className="px-2 py-4">
+                        <span className="font-semibold text-text-primary">
+                          {state.toUpperCase()}
+                        </span>
+                      </td>
+
+                      <td className="px-2 py-4 text-sm text-text-secondary">
+                        {selectedSummary?.evaluation_count ?? "—"}
+                      </td>
+
+                      <td className="px-2 py-4 text-sm text-text-secondary">
+                        {comparisonSummary?.evaluation_count ?? "—"}
+                      </td>
+
+                      <td className="px-2 py-4 text-sm text-text-primary">
+                        {formatPercentage(
+                          selectedSummary?.directional_accuracy ?? null,
+                        )}
+                      </td>
+
+                      <td className="px-2 py-4 text-sm text-text-primary">
+                        {formatPercentage(
+                          comparisonSummary?.directional_accuracy ?? null,
+                        )}
+                      </td>
+
+                      <td className="px-2 py-4 text-sm text-text-primary">
+                        {formatPercentage(
+                          selectedSummary?.average_relative_return_pct ??
+                            null,
+                        )}
+                      </td>
+
+                      <td className="px-2 py-4 text-sm text-text-primary">
+                        {formatPercentage(
+                          comparisonSummary?.average_relative_return_pct ??
+                            null,
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComparisonPanel({
+  title,
+  run,
+  report,
+  provenance,
+  provenanceUnavailable = false,
+}: {
+  title: string;
+  run: BacktestRunResponse | null;
+  report: BacktestPerformanceReport;
+  provenance: BacktestProvenance | null;
+  provenanceUnavailable?: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface-subtle p-5">
+      <div className="flex flex-col gap-5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
+            {title}
+          </p>
+
+          <p className="mt-2 break-all text-xs text-text-muted">
+            {report.backtest_id}
+          </p>
+        </div>
+
+        {run && (
+          <div className="flex flex-wrap items-center gap-2">
+            {run.valid ? (
+              <Badge variant="positive">Valid run</Badge>
+            ) : (
+              <Badge variant="warning">Run contains rejections</Badge>
+            )}
+
+            <span className="text-xs text-text-muted">
+              Completed {formatTimestamp(run.completed_at)}
+            </span>
+          </div>
+        )}
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <ComparisonMetric
+            label="Evaluations"
+            value={String(report.total_evaluations)}
+          />
+
+          <ComparisonMetric
+            label="Directional accuracy"
+            value={formatPercentage(report.directional_accuracy)}
+          />
+
+          <ComparisonMetric
+            label="Average return"
+            value={formatPercentage(report.average_forward_return_pct)}
+          />
+
+          <ComparisonMetric
+            label="Relative return"
+            value={formatPercentage(report.average_relative_return_pct)}
+          />
+        </div>
+
+        <div className="border-t border-border pt-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <QualityBadge state={report.quality_state} />
+
+            <span className="text-sm text-text-secondary">
+              {report.quality_evaluation_count} quality evaluations
+            </span>
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-5">
+          <p className="text-sm font-semibold text-text-primary">
+            Provenance
+          </p>
+
+          {provenance ? (
+            <div className="mt-4 flex flex-col gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ComparisonMetric
+                  label="Ruleset"
+                  value={provenance.ruleset_version}
+                />
+
+                <ComparisonMetric
+                  label="Evidence references"
+                  value={String(provenance.evidence.length)}
+                />
+
+                <ComparisonMetric
+                  label="Input records"
+                  value={String(provenance.input_ids.length)}
+                />
+
+                <ComparisonMetric
+                  label="Stage"
+                  value={formatStage(provenance.stage)}
+                />
+              </div>
+
+              <ComparisonProvenanceList
+                title="Assumptions"
+                items={provenance.assumptions}
+                emptyMessage="No assumptions recorded."
+              />
+
+              <ComparisonProvenanceList
+                title="Invalidation conditions"
+                items={provenance.invalidation_conditions}
+                emptyMessage="No invalidation conditions recorded."
+              />
+            </div>
+          ) : provenanceUnavailable ? (
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              No persisted provenance record is available for this run.
+            </p>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              Provenance is unavailable for comparison.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComparisonMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
+        {label}
+      </p>
+
+      <p className="mt-1 break-words text-sm font-semibold text-text-primary">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ComparisonProvenanceList({
+  title,
+  items,
+  emptyMessage,
+}: {
+  title: string;
+  items: string[];
+  emptyMessage: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
+        {title}
+      </p>
+
+      {items.length > 0 ? (
+        <div className="mt-2 flex flex-col gap-2">
+          {items.map((item) => (
+            <div
+              key={item}
+              className="rounded-md border border-border bg-surface bg-opacity-40 px-3 py-2 text-sm leading-6 text-text-secondary"
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm leading-6 text-text-secondary">
+          {emptyMessage}
+        </p>
       )}
     </div>
   );
