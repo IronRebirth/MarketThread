@@ -5,7 +5,11 @@ from pydantic import BaseModel, Field
 
 from .engine import BacktestSignal
 from .market_data_quality import BacktestMarketDataHorizonQuality
-from .models import BacktestPeriod, TimeAwareObservation
+from .models import (
+    BacktestPeriod,
+    BacktestRunConfiguration,
+    TimeAwareObservation,
+)
 from .report import (
     BacktestPerformanceReport,
     PerformanceBreakdown,
@@ -19,9 +23,37 @@ class BacktestPerformanceReportRequest(BaseModel):
     )
 
 
+class BacktestRunConfigurationRequest(BaseModel):
+    training_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+        description="Chronological training periods persisted with the run.",
+    )
+    evaluation_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+        description="Chronological evaluation periods persisted with the run.",
+    )
+    benchmark_instrument_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Optional benchmark instrument used for relative-return evaluation."
+        ),
+    )
+
+    def to_domain(self) -> BacktestRunConfiguration:
+        return BacktestRunConfiguration(
+            training_periods=self.training_periods,
+            evaluation_periods=self.evaluation_periods,
+            benchmark_instrument_id=self.benchmark_instrument_id,
+        )
+
+
 class BacktestRunCreateRequest(BaseModel):
     execution: dict = Field(
         description="Serialized completed BacktestExecutionResult.",
+    )
+    configuration: BacktestRunConfigurationRequest | None = Field(
+        default=None,
+        description=("Optional run configuration snapshot. Older clients may omit it."),
     )
 
 
@@ -70,12 +102,24 @@ class ServerSideBacktestExecutionRequest(BaseModel):
     )
 
 
+class BacktestPeriodResponse(BaseModel):
+    start_at: datetime
+    end_at: datetime
+
+
+class BacktestRunConfigurationResponse(BaseModel):
+    training_periods: tuple[BacktestPeriodResponse, ...]
+    evaluation_periods: tuple[BacktestPeriodResponse, ...]
+    benchmark_instrument_id: UUID | None = None
+
+
 class BacktestRunResponse(BaseModel):
     backtest_id: UUID
     valid: bool
     evaluation_count: int
     valid_evaluation_count: int
     rejected_evaluation_count: int
+    configuration: BacktestRunConfigurationResponse | None = None
     created_at: datetime
     completed_at: datetime
 
@@ -176,6 +220,34 @@ class BacktestPerformanceReportResponse(BaseModel):
     notes: tuple[str, ...]
 
 
+def to_configuration_response(
+    configuration: BacktestRunConfiguration | dict | None,
+) -> BacktestRunConfigurationResponse | None:
+    if configuration is None:
+        return None
+
+    if not isinstance(configuration, BacktestRunConfiguration):
+        configuration = BacktestRunConfiguration.model_validate(configuration)
+
+    return BacktestRunConfigurationResponse(
+        training_periods=tuple(
+            BacktestPeriodResponse(
+                start_at=period.start_at,
+                end_at=period.end_at,
+            )
+            for period in configuration.training_periods
+        ),
+        evaluation_periods=tuple(
+            BacktestPeriodResponse(
+                start_at=period.start_at,
+                end_at=period.end_at,
+            )
+            for period in configuration.evaluation_periods
+        ),
+        benchmark_instrument_id=configuration.benchmark_instrument_id,
+    )
+
+
 def to_run_response(
     run: object,
 ) -> BacktestRunResponse:
@@ -185,6 +257,9 @@ def to_run_response(
         evaluation_count=run.evaluation_count,
         valid_evaluation_count=run.valid_evaluation_count,
         rejected_evaluation_count=run.rejected_evaluation_count,
+        configuration=to_configuration_response(
+            getattr(run, "configuration", None),
+        ),
         created_at=run.created_at,
         completed_at=run.completed_at,
     )

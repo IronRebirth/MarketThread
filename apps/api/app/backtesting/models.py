@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.evaluation.models import (
     EvaluationDirection,
@@ -86,6 +86,20 @@ class BacktestPeriod(BaseModel):
 
     def is_valid(self) -> bool:
         return self.end_at > self.start_at
+
+
+class BacktestRunConfiguration(BaseModel):
+    """Immutable configuration snapshot persisted with a completed run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    training_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+    )
+    evaluation_periods: tuple[BacktestPeriod, ...] = Field(
+        min_length=1,
+    )
+    benchmark_instrument_id: UUID | None = None
 
 
 class WalkForwardFold(BaseModel):

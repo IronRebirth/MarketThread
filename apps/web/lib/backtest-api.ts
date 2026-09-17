@@ -73,12 +73,24 @@ export type BacktestProvenance = {
   invalidation_conditions: string[];
 };
 
+export type BacktestPeriod = {
+  start_at: string;
+  end_at: string;
+};
+
+export type BacktestRunConfiguration = {
+  training_periods: BacktestPeriod[];
+  evaluation_periods: BacktestPeriod[];
+  benchmark_instrument_id: string | null;
+};
+
 export type BacktestRunResponse = {
   backtest_id: string;
   valid: boolean;
   evaluation_count: number;
   valid_evaluation_count: number;
   rejected_evaluation_count: number;
+  configuration: BacktestRunConfiguration | null;
   created_at: string;
   completed_at: string;
 };
@@ -220,6 +232,7 @@ export async function fetchBacktestEvaluations(
 
 export async function persistBacktestRun(
   execution: BacktestExecutionPayload,
+  configuration?: BacktestRunConfiguration,
 ): Promise<BacktestRunResponse> {
   return getJson<BacktestRunResponse>(
     `${API_BASE_URL}/backtests/runs`,
@@ -230,6 +243,7 @@ export async function persistBacktestRun(
       },
       body: JSON.stringify({
         execution,
+        ...(configuration ? { configuration } : {}),
       }),
     },
   );

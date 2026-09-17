@@ -149,6 +149,7 @@ async def execute_server_side_backtest(
             signals=resolution.signals,
             observations=resolution.observations,
             backtest_id=request.backtest_id,
+            benchmark_instrument_id=request.benchmark_instrument_id,
             market_data_expected_count=resolution.market_data_expected_count,
             market_data_resolved_count=resolution.market_data_resolved_count,
             market_data_horizon_quality=resolution.market_data_horizon_quality,
@@ -199,7 +200,7 @@ async def execute_server_side_backtest(
     summary="Persist a completed backtest run",
     description=(
         "Persists a completed backtest execution including its walk-forward "
-        "folds and time-aware evaluations."
+        "folds, time-aware evaluations, and an optional configuration snapshot."
     ),
 )
 async def create_backtest_run(
@@ -208,10 +209,15 @@ async def create_backtest_run(
 ) -> BacktestRunResponse:
     execution = _validate_execution(request.execution)
 
+    configuration = (
+        request.configuration.to_domain() if request.configuration is not None else None
+    )
+
     try:
         run = await _persistence_service.save_execution(
             session,
             execution,
+            configuration=configuration,
         )
     except BacktestRunAlreadyExistsError as exc:
         raise HTTPException(
@@ -229,7 +235,7 @@ async def create_backtest_run(
     summary="List persisted backtest runs",
     description=(
         "Returns persisted backtest runs in reverse completion order with "
-        "pagination metadata."
+        "pagination metadata and any available run configuration."
     ),
 )
 async def list_backtest_runs(
