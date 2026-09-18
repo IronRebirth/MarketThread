@@ -11,6 +11,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { SignalCard } from "./signal-card";
+import { SignalGenerationPanel } from "./signal-generation-panel";
 
 function formatPercentage(value: number) {
   return `${(value * 100).toFixed(0)}%`;
@@ -163,8 +164,8 @@ export function MarketIntelligenceDashboard() {
 
             <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
               Review persisted market signals with their evidence support,
-              risk context, time horizon, rationale, and invalidation
-              conditions.
+              risk context, time horizon, rationale, invalidation conditions,
+              and source market impacts.
             </p>
           </div>
 
@@ -194,6 +195,12 @@ export function MarketIntelligenceDashboard() {
           </div>
         </Card>
       )}
+
+      <SignalGenerationPanel
+        onGenerated={() => {
+          void loadSignals();
+        }}
+      />
 
       {isLoading ? (
         <>
@@ -261,10 +268,9 @@ export function MarketIntelligenceDashboard() {
                   </p>
 
                   <p className="mt-2 text-sm leading-6 text-text-secondary">
-                    MarketThread will display generated and persisted signals
-                    here once the intelligence pipeline produces them. This
-                    workspace does not substitute mock market data for
-                    persisted intelligence.
+                    Generate a signal from a persisted market impact using the
+                    workspace above. This dashboard does not substitute mock
+                    market data for persisted intelligence.
                   </p>
                 </div>
               </div>

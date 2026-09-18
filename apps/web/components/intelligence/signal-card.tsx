@@ -173,7 +173,7 @@ export function SignalCard({ signal }: { signal: MarketSignal }) {
           />
         </div>
 
-        <div className="grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
+        <div className="grid gap-4 border-t border-border pt-5 sm:grid-cols-2 lg:grid-cols-3">
           <SignalMetadata
             label="Evidence references"
             value={String(signal.evidence_article_ids.length)}
@@ -183,6 +183,12 @@ export function SignalCard({ signal }: { signal: MarketSignal }) {
             label="Event"
             value={signal.event_id}
             monospace
+          />
+
+          <SignalMetadata
+            label="Market impact"
+            value={signal.market_impact_id ?? "Not linked"}
+            monospace={signal.market_impact_id !== null}
           />
         </div>
       </div>
