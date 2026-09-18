@@ -298,6 +298,61 @@ class PortfolioPersistenceService:
 
         return tuple(result.scalars().all())
 
+    async def list_position_history_at(
+        self,
+        user_id: UUID,
+        portfolio_id: UUID,
+        as_of,
+    ) -> Sequence[PortfolioPositionHistoryRecord]:
+        """Return the latest historical state for each instrument at a point in time."""
+
+        history_rank = (
+            func.row_number()
+            .over(
+                partition_by=PortfolioPositionHistoryRecord.instrument_id,
+                order_by=(
+                    PortfolioPositionHistoryRecord.recorded_at.desc(),
+                    PortfolioPositionHistoryRecord.sequence_id.desc(),
+                ),
+            )
+            .label("history_rank")
+        )
+
+        latest_history = (
+            select(
+                PortfolioPositionHistoryRecord.sequence_id.label("sequence_id"),
+                history_rank,
+            )
+            .join(
+                PortfolioRecord,
+                PortfolioRecord.id == PortfolioPositionHistoryRecord.portfolio_id,
+            )
+            .where(
+                PortfolioPositionHistoryRecord.portfolio_id == portfolio_id,
+                PortfolioRecord.user_id == user_id,
+                PortfolioPositionHistoryRecord.recorded_at <= as_of,
+            )
+            .subquery()
+        )
+
+        result = await self.session.execute(
+            select(PortfolioPositionHistoryRecord)
+            .join(
+                latest_history,
+                latest_history.c.sequence_id
+                == PortfolioPositionHistoryRecord.sequence_id,
+            )
+            .where(
+                latest_history.c.history_rank == 1,
+            )
+            .order_by(
+                PortfolioPositionHistoryRecord.instrument_id,
+                PortfolioPositionHistoryRecord.sequence_id,
+            ),
+        )
+
+        return tuple(result.scalars().all())
+
     async def delete_for_user(
         self,
         user_id: UUID,

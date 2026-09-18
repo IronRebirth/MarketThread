@@ -2,7 +2,15 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -12,6 +20,15 @@ class PortfolioPositionHistoryRecord(Base):
     """Append-only historical state of a portfolio position."""
 
     __tablename__ = "portfolio_position_history"
+    __table_args__ = (
+        Index(
+            "ix_pos_hist_port_inst_recorded_seq",
+            "portfolio_id",
+            "instrument_id",
+            "recorded_at",
+            "sequence_id",
+        ),
+    )
 
     sequence_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -47,7 +64,7 @@ class PortfolioPositionHistoryRecord(Base):
     )
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        nullable=False,
         server_default=func.now(),
+        nullable=False,
         index=True,
     )
