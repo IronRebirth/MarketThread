@@ -39,6 +39,7 @@ class MarketImpact(BaseModel):
 
     event_id: UUID
     company_name: str = Field(min_length=1, max_length=255)
+    ticker: str | None = Field(default=None, max_length=32)
     impact_type: ImpactType
     direction: CompanyImpactDirection
     factor: ImpactFactor

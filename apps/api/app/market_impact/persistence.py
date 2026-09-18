@@ -8,11 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.event import EventRecord
 from app.db.models.market_impact import MarketImpactRecord
 
-from .models import (
-    ImpactFactor,
-    MarketImpact,
-    TimeHorizon,
-)
+from .models import ImpactFactor, MarketImpact, TimeHorizon
 
 
 class MarketImpactPersistenceError(Exception):
@@ -47,6 +43,7 @@ class MarketImpactPersistenceService:
             event_id=market_impact.event_id,
             company_impact_id=company_impact_id,
             company_name=market_impact.company_name,
+            ticker=market_impact.ticker,
             impact_type=market_impact.impact_type.value,
             direction=market_impact.direction.value,
             factor=market_impact.factor.value,
@@ -175,6 +172,7 @@ class MarketImpactPersistenceService:
         return MarketImpact(
             event_id=record.event_id,
             company_name=record.company_name,
+            ticker=record.ticker,
             impact_type=record.impact_type,
             direction=record.direction,
             factor=ImpactFactor(record.factor),
