@@ -26,6 +26,11 @@ export const primaryNavigation: NavigationItem[] = [
     description: "Company-level research and impact analysis.",
   },
   {
+    label: "Market Impact",
+    href: "/market-impacts",
+    description: "Economic transmission paths from events to companies.",
+  },
+  {
     label: "Watchlists",
     href: "/watchlists",
     description: "Track companies, sectors, and market themes.",
@@ -45,4 +50,4 @@ export const primaryNavigation: NavigationItem[] = [
     href: "/research",
     description: "Ask questions and explore market evidence.",
   },
-];
+]
