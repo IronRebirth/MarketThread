@@ -19,6 +19,7 @@ from app.db.models.recommendation_provenance import (
 )
 from app.db.models.signal import SignalRecord
 from app.db.models.user import User
+from app.db.models.watchlist import WatchlistItemRecord, WatchlistRecord
 
 __all__ = [
     "BacktestEvaluation",
@@ -37,4 +38,6 @@ __all__ = [
     "RecommendationRecord",
     "SignalRecord",
     "User",
+    "WatchlistItemRecord",
+    "WatchlistRecord",
 ]

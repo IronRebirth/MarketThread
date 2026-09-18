@@ -11,6 +11,7 @@ from app.market_impact.api import router as market_impact_router
 from app.news.api import router as news_router
 from app.recommendations.api import router as recommendations_router
 from app.signals.api import router as signals_router
+from app.watchlists.api import router as watchlists_router
 
 settings = get_settings()
 
@@ -40,6 +41,7 @@ app.include_router(company_impact_router)
 app.include_router(market_impact_router)
 app.include_router(signals_router)
 app.include_router(recommendations_router)
+app.include_router(watchlists_router)
 
 
 @app.get("/health", tags=["system"])
