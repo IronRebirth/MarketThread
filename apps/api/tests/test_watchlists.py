@@ -5,7 +5,6 @@ from httpx import AsyncClient
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
 from app.db.models.instrument import Instrument
 from app.db.models.user import User
 

@@ -122,9 +122,7 @@ async def add_watchlist_item(
             detail="Active instrument not found.",
         ) from None
 
-    response.status_code = (
-        status.HTTP_201_CREATED if created else status.HTTP_200_OK
-    )
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
 
     return WatchlistItemResponse(
         item_id=item.item_id,

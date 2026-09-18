@@ -18,9 +18,7 @@ settings = get_settings()
 app = FastAPI(
     title=f"{settings.app_name} API",
     version="0.1.0",
-    description=(
-        "Backend API for the MarketThread financial intelligence platform."
-    ),
+    description=("Backend API for the MarketThread financial intelligence platform."),
 )
 
 app.add_middleware(

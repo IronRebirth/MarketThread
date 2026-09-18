@@ -61,8 +61,7 @@ class WatchlistPersistenceService:
         result = await self.session.execute(statement)
 
         return tuple(
-            self._to_domain(record, item_count=count)
-            for record, count in result.all()
+            self._to_domain(record, item_count=count) for record, count in result.all()
         )
 
     async def get_for_user(
@@ -147,12 +146,9 @@ class WatchlistPersistenceService:
         if instrument is None or not instrument.is_active:
             return None, False
 
-        existing_statement = (
-            select(WatchlistItemRecord)
-            .where(
-                WatchlistItemRecord.watchlist_id == watchlist_id,
-                WatchlistItemRecord.instrument_id == instrument_id,
-            )
+        existing_statement = select(WatchlistItemRecord).where(
+            WatchlistItemRecord.watchlist_id == watchlist_id,
+            WatchlistItemRecord.instrument_id == instrument_id,
         )
 
         existing_result = await self.session.execute(existing_statement)
@@ -216,8 +212,7 @@ class WatchlistPersistenceService:
         result = await self.session.execute(statement)
 
         return tuple(
-            self._to_item_domain(item, instrument)
-            for item, instrument in result.all()
+            self._to_item_domain(item, instrument) for item, instrument in result.all()
         )
 
     async def delete_item_for_user(
