@@ -110,6 +110,33 @@ export type PortfolioExposureResponse = {
   positions: PortfolioPositionExposureResponse[];
 };
 
+export type PortfolioRiskIndicatorKind =
+  | "valuation_data_quality"
+  | "single_instrument_currency_exposure"
+  | "single_asset_class_currency_exposure";
+
+export type PortfolioRiskIndicatorLevel =
+  | "attention"
+  | "information";
+
+export type PortfolioRiskIndicatorResponse = {
+  kind: PortfolioRiskIndicatorKind;
+  level: PortfolioRiskIndicatorLevel;
+  currency: string | null;
+  title: string;
+  rationale: string;
+  position_count: number;
+  asset_class: string | null;
+};
+
+export type PortfolioRiskIndicatorsResponse = {
+  portfolio: Portfolio;
+  assessed_at: string;
+  maximum_quote_age_seconds: number;
+  quality: string;
+  indicators: PortfolioRiskIndicatorResponse[];
+};
+
 export class PortfolioApiError extends Error {
   readonly status: number;
 
@@ -221,6 +248,19 @@ export async function fetchPortfolioExposure(
     `${API_BASE_URL}/portfolios/${encodeURIComponent(
       portfolioId,
     )}/exposure?maximum_age_seconds=${encodeURIComponent(
+      String(maximumAgeSeconds),
+    )}`,
+  );
+}
+
+export async function fetchPortfolioRiskIndicators(
+  portfolioId: string,
+  maximumAgeSeconds = 900,
+): Promise<PortfolioRiskIndicatorsResponse> {
+  return requestJson<PortfolioRiskIndicatorsResponse>(
+    `${API_BASE_URL}/portfolios/${encodeURIComponent(
+      portfolioId,
+    )}/risk-indicators?maximum_age_seconds=${encodeURIComponent(
       String(maximumAgeSeconds),
     )}`,
   );
