@@ -25,6 +25,11 @@ from app.portfolio.exposure_schemas import (
     PortfolioPositionExposureResponse,
 )
 from app.portfolio.persistence import PortfolioPersistenceService
+from app.portfolio.risk_indicators import PortfolioRiskIndicatorService
+from app.portfolio.risk_indicators_schemas import (
+    PortfolioRiskIndicatorResponse,
+    PortfolioRiskIndicatorsResponse,
+)
 from app.portfolio.schemas import (
     PortfolioCreateRequest,
     PortfolioCurrencyValuationResponse,
@@ -285,6 +290,41 @@ def _to_exposure_response(
     )
 
 
+def _to_risk_indicators_response(
+    analysis,
+) -> PortfolioRiskIndicatorsResponse:
+    """Convert risk observations into an API response."""
+
+    portfolio_response = PortfolioResponse(
+        portfolio_id=analysis.portfolio.portfolio_id,
+        name=analysis.portfolio.name,
+        created_at=analysis.portfolio.created_at,
+        updated_at=analysis.portfolio.updated_at,
+        position_count=analysis.portfolio.position_count,
+    )
+
+    indicators = tuple(
+        PortfolioRiskIndicatorResponse(
+            kind=indicator.kind,
+            level=indicator.level,
+            currency=indicator.currency,
+            title=indicator.title,
+            rationale=indicator.rationale,
+            position_count=indicator.position_count,
+            asset_class=indicator.asset_class,
+        )
+        for indicator in analysis.indicators
+    )
+
+    return PortfolioRiskIndicatorsResponse(
+        portfolio=portfolio_response,
+        assessed_at=analysis.assessed_at,
+        maximum_quote_age_seconds=analysis.maximum_quote_age_seconds,
+        quality=analysis.quality,
+        indicators=indicators,
+    )
+
+
 @router.post(
     "",
     response_model=PortfolioResponse,
@@ -459,6 +499,49 @@ async def get_portfolio_exposure(
         ) from None
 
     return _to_exposure_response(exposure)
+
+
+@router.get(
+    "/{portfolio_id}/risk-indicators",
+    response_model=PortfolioRiskIndicatorsResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_portfolio_risk_indicators(
+    portfolio_id: UUID,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    market_data: MarketDataServiceDependency,
+    maximum_age_seconds: Annotated[
+        int,
+        Query(
+            gt=0,
+            le=86400,
+            description="Maximum accepted quote age in seconds.",
+        ),
+    ] = 900,
+) -> PortfolioRiskIndicatorsResponse:
+    """Return deterministic portfolio risk observations."""
+
+    service = PortfolioRiskIndicatorService(
+        persistence=PortfolioPersistenceService(session),
+        market_data=market_data,
+    )
+
+    try:
+        analysis = await service.build(
+            user_id=current_user.id,
+            portfolio_id=portfolio_id,
+            maximum_quote_age=timedelta(
+                seconds=maximum_age_seconds,
+            ),
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portfolio not found.",
+        ) from None
+
+    return _to_risk_indicators_response(analysis)
 
 
 @router.put(
