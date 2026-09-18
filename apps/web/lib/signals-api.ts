@@ -20,6 +20,7 @@ export type SignalOpportunity =
 export type MarketSignal = {
   signal_id: string;
   instrument_id: string;
+  market_impact_id: string | null;
   created_at: string;
   event_id: string;
   company_name: string;
@@ -50,6 +51,26 @@ export class SignalsApiError extends Error {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
 
+async function readErrorMessage(response: Response): Promise<string> {
+  const detail = await response.text();
+
+  if (!detail) {
+    return `Signals API request failed (${response.status})`;
+  }
+
+  try {
+    const payload = JSON.parse(detail) as { detail?: unknown };
+
+    if (typeof payload.detail === "string") {
+      return payload.detail;
+    }
+  } catch {
+    // Fall back to the raw response body when it is not JSON.
+  }
+
+  return detail;
+}
+
 async function getJson<T>(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -60,11 +81,9 @@ async function getJson<T>(
   });
 
   if (!response.ok) {
-    const detail = await response.text();
-
     throw new SignalsApiError(
       response.status,
-      detail || `Signals API request failed (${response.status})`,
+      await readErrorMessage(response),
     );
   }
 
@@ -80,5 +99,18 @@ export async function fetchMarketSignals(
 
   return getJson<MarketSignal[]>(
     `${API_BASE_URL}/signals?${params.toString()}`,
+  );
+}
+
+export async function generateSignalFromMarketImpact(
+  marketImpactId: string,
+): Promise<MarketSignal> {
+  return getJson<MarketSignal>(
+    `${API_BASE_URL}/signals/from-market-impact/${encodeURIComponent(
+      marketImpactId,
+    )}`,
+    {
+      method: "POST",
+    },
   );
 }

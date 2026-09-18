@@ -28,9 +28,21 @@ class SignalPersistenceService:
         instrument_id: UUID,
         created_at: datetime,
         signal_id: UUID | None = None,
+        market_impact_id: UUID | None = None,
     ) -> SignalRecord:
+        if market_impact_id is not None:
+            existing = await session.scalar(
+                select(SignalRecord).where(
+                    SignalRecord.market_impact_id == market_impact_id,
+                ),
+            )
+
+            if existing is not None:
+                return existing
+
         record = SignalRecord(
             id=signal_id or uuid4(),
+            market_impact_id=market_impact_id,
             event_id=signal.event_id,
             instrument_id=instrument_id,
             company_name=signal.company_name,

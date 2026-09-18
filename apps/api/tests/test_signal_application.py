@@ -188,6 +188,7 @@ async def test_generates_signal_from_persisted_market_impact(
             market_impact_id,
         )
 
+        assert record.market_impact_id == market_impact_id
         assert record.instrument_id == instrument.id
         assert record.event_id == event.event_id
         assert record.company_name == "Test Company"
@@ -196,6 +197,65 @@ async def test_generates_signal_from_persisted_market_impact(
         assert record.strength == "strong"
         assert record.opportunity == "opportunity"
         assert record.confidence == 0.84
+    finally:
+        await cleanup(
+            db_session,
+            event.event_id,
+            instrument.id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_generation_is_idempotent(
+    db_session,
+) -> None:
+    ticker = f"TST{uuid4().hex[:8].upper()}"
+    event = make_event()
+
+    _, market_impact_id = await persist_pipeline(
+        db_session,
+        event,
+        ticker,
+    )
+
+    instrument = Instrument(
+        symbol=ticker,
+        name="Test Company",
+        exchange="TEST",
+        asset_class="equity",
+        currency="USD",
+        is_active=True,
+    )
+    db_session.add(instrument)
+    await db_session.commit()
+    await db_session.refresh(instrument)
+
+    try:
+        service = SignalApplicationService()
+
+        first = await service.generate_from_market_impact(
+            db_session,
+            market_impact_id,
+        )
+        second = await service.generate_from_market_impact(
+            db_session,
+            market_impact_id,
+        )
+
+        records = (
+            (
+                await db_session.execute(
+                    select(SignalRecord).where(
+                        SignalRecord.market_impact_id == market_impact_id,
+                    ),
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        assert first.id == second.id
+        assert len(records) == 1
     finally:
         await cleanup(
             db_session,

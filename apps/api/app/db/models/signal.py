@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,10 +11,21 @@ class SignalRecord(Base):
     """Immutable historical snapshot of a generated market signal."""
 
     __tablename__ = "signals"
+    __table_args__ = (
+        UniqueConstraint(
+            "market_impact_id",
+            name="uq_signals_market_impact",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
         default=uuid.uuid4,
+    )
+    market_impact_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("market_impacts.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     event_id: Mapped[uuid.UUID] = mapped_column(
         nullable=False,

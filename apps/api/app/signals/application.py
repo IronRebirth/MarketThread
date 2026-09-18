@@ -38,7 +38,7 @@ class SignalApplicationService:
         session: AsyncSession,
         market_impact_id: UUID,
     ):
-        """Generate and persist a signal from a persisted market impact."""
+        """Generate or retrieve the signal for a persisted market impact."""
 
         market_impact = await self._market_impact_persistence.get(
             session,
@@ -70,4 +70,5 @@ class SignalApplicationService:
             signal=signal,
             instrument_id=instrument.id,
             created_at=datetime.now(UTC),
+            market_impact_id=market_impact_id,
         )

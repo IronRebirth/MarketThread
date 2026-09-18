@@ -31,6 +31,7 @@ export type MarketImpact = {
   company_impact_id: string;
   event_id: string;
   company_name: string;
+  ticker: string | null;
   impact_type: ImpactType;
   direction: CompanyImpactDirection;
   factor: ImpactFactor;
@@ -79,8 +80,7 @@ async function getJson<T>(
 
     throw new MarketImpactsApiError(
       response.status,
-      detail ||
-        `Market impact API request failed (${response.status})`,
+      detail || `Market impact API request failed (${response.status})`,
     );
   }
 
