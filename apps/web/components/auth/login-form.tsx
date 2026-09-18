@@ -22,16 +22,36 @@ function getErrorMessage(error: unknown) {
   return "The account could not be authenticated.";
 }
 
+function getSafeNextPath() {
+  if (typeof window === "undefined") {
+    return "/";
+  }
+
+  const next = new URLSearchParams(
+    window.location.search,
+  ).get("next");
+
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/";
+  }
+
+  return next;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const { login } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
 
     setIsSubmitting(true);
@@ -43,7 +63,7 @@ export function LoginForm() {
         password,
       });
 
-      router.replace("/");
+      router.replace(getSafeNextPath());
       router.refresh();
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -51,6 +71,8 @@ export function LoginForm() {
       setIsSubmitting(false);
     }
   };
+
+  const nextPath = getSafeNextPath();
 
   return (
     <Card
@@ -107,7 +129,9 @@ export function LoginForm() {
         <p className="text-center text-sm text-text-secondary">
           No account yet?{" "}
           <Link
-            href="/register"
+            href={`/register?next=${encodeURIComponent(
+              nextPath,
+            )}`}
             className="font-medium text-brand hover:underline"
           >
             Create one
