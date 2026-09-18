@@ -22,6 +22,22 @@ function getErrorMessage(error: unknown) {
   return "The account could not be created.";
 }
 
+function getSafeNextPath() {
+  if (typeof window === "undefined") {
+    return "/";
+  }
+
+  const next = new URLSearchParams(
+    window.location.search,
+  ).get("next");
+
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/";
+  }
+
+  return next;
+}
+
 export function RegisterForm() {
   const router = useRouter();
   const { register, login } = useAuth();
@@ -29,10 +45,14 @@ export function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
 
     setErrorMessage(null);
@@ -55,7 +75,7 @@ export function RegisterForm() {
         password,
       });
 
-      router.replace("/");
+      router.replace(getSafeNextPath());
       router.refresh();
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -63,6 +83,8 @@ export function RegisterForm() {
       setIsSubmitting(false);
     }
   };
+
+  const nextPath = getSafeNextPath();
 
   return (
     <Card
@@ -135,7 +157,7 @@ export function RegisterForm() {
         <p className="text-center text-sm text-text-secondary">
           Already have an account?{" "}
           <Link
-            href="/login"
+            href={`/login?next=${encodeURIComponent(nextPath)}`}
             className="font-medium text-brand hover:underline"
           >
             Sign in
