@@ -5,16 +5,19 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "../auth/auth-provider";
 import { PortfolioPositionForm } from "./portfolio-position-form";
+import { PortfolioValuationPanel } from "./portfolio-valuation-panel";
 import {
   createPortfolio,
   deletePortfolio,
   fetchPortfolio,
+  fetchPortfolioValuation,
   fetchPortfolios,
   PortfolioApiError,
   removePortfolioPosition,
   type Portfolio,
   type PortfolioDetail,
   type PortfolioPosition,
+  type PortfolioValuationResponse,
 } from "../../lib/portfolio-api";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -65,11 +68,15 @@ function formatPrice(value: string, currency: string) {
     return `${value} ${currency}`;
   }
 
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 8,
-  }).format(numericValue);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 8,
+    }).format(numericValue);
+  } catch {
+    return `${value} ${currency}`;
+  }
 }
 
 function calculateCostBasis(
@@ -141,9 +148,13 @@ export function PortfolioDashboard() {
     useState<string | null>(null);
   const [selectedPortfolio, setSelectedPortfolio] =
     useState<PortfolioDetail | null>(null);
+  const [selectedValuation, setSelectedValuation] =
+    useState<PortfolioValuationResponse | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [isValuationLoading, setIsValuationLoading] =
+    useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(
     null,
@@ -151,6 +162,8 @@ export function PortfolioDashboard() {
   const [detailErrorMessage, setDetailErrorMessage] = useState<
     string | null
   >(null);
+  const [valuationErrorMessage, setValuationErrorMessage] =
+    useState<string | null>(null);
 
   const [portfolioName, setPortfolioName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -224,10 +237,39 @@ export function PortfolioDashboard() {
     };
   }, [isAuthLoading, isAuthenticated, loadPortfolios]);
 
+  const loadSelectedPortfolioValuation = useCallback(
+    async (portfolioId: string) => {
+      setIsValuationLoading(true);
+      setValuationErrorMessage(null);
+
+      try {
+        const valuation = await fetchPortfolioValuation(
+          portfolioId,
+          900,
+        );
+
+        setSelectedValuation(valuation);
+      } catch (error) {
+        setSelectedValuation(null);
+        setValuationErrorMessage(
+          getErrorMessage(
+            error,
+            "The portfolio valuation could not be loaded.",
+          ),
+        );
+      } finally {
+        setIsValuationLoading(false);
+      }
+    },
+    [],
+  );
+
   const loadSelectedPortfolio = useCallback(
     async (portfolioId: string) => {
       setIsDetailLoading(true);
       setDetailErrorMessage(null);
+      setSelectedValuation(null);
+      setValuationErrorMessage(null);
 
       try {
         const detail = await fetchPortfolio(portfolioId);
@@ -244,8 +286,10 @@ export function PortfolioDashboard() {
       } finally {
         setIsDetailLoading(false);
       }
+
+      void loadSelectedPortfolioValuation(portfolioId);
     },
-    [],
+    [loadSelectedPortfolioValuation],
   );
 
   useEffect(() => {
@@ -378,6 +422,7 @@ export function PortfolioDashboard() {
       await deletePortfolio(selectedPortfolioId);
 
       setSelectedPortfolio(null);
+      setSelectedValuation(null);
       setSelectedPortfolioId(null);
 
       await loadPortfolios();
@@ -431,8 +476,9 @@ export function PortfolioDashboard() {
           </h1>
 
           <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
-            Maintain your persisted holdings and prepare the portfolio
-            for evidence-backed valuation and risk analysis.
+            Maintain persisted holdings and inspect server-backed
+            valuation with explicit quote freshness and currency
+            boundaries.
           </p>
 
           {user && (
@@ -592,7 +638,7 @@ export function PortfolioDashboard() {
             <Metric
               label="Cost basis"
               value={portfolioMetrics.costBasis}
-              description="Derived from stored quantity and average cost; not current market value."
+              description="Derived from stored quantity and average cost."
             />
           </section>
 
@@ -654,6 +700,17 @@ export function PortfolioDashboard() {
             </Card>
           ) : selectedPortfolio ? (
             <>
+              <PortfolioValuationPanel
+                valuation={selectedValuation}
+                isLoading={isValuationLoading}
+                errorMessage={valuationErrorMessage}
+                onRefresh={() =>
+                  void loadSelectedPortfolioValuation(
+                    selectedPortfolio.portfolio_id,
+                  )
+                }
+              />
+
               <PortfolioPositionForm
                 portfolioId={selectedPortfolio.portfolio_id}
                 onPositionSaved={handlePositionSaved}
@@ -700,7 +757,7 @@ export function PortfolioDashboard() {
                           </th>
 
                           <th className="border-b border-border px-3 py-3 text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
-                            Market data
+                            Instrument state
                           </th>
 
                           <th className="border-b border-border px-3 py-3 text-right text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
@@ -821,13 +878,13 @@ export function PortfolioDashboard() {
                   />
 
                   <ReadinessNote
-                    title="Market value"
-                    description="Not displayed yet because a reliable current quote and its freshness must be established first."
+                    title="Server-backed valuation"
+                    description="Market value and unrealized performance now use persisted positions plus explicit quote freshness."
                   />
 
                   <ReadinessNote
                     title="Portfolio risk"
-                    description="Portfolio-level concentration and exposure analysis will be added after the valuation layer."
+                    description="Portfolio-level concentration and exposure analysis remains separate from valuation."
                   />
                 </div>
               </Card>

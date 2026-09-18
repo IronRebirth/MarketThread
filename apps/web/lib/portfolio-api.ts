@@ -28,6 +28,49 @@ export type PortfolioDetail = Portfolio & {
   positions: PortfolioPosition[];
 };
 
+export type PortfolioQuoteResponse = {
+  timestamp: string;
+  price: string;
+  bid: string | null;
+  ask: string | null;
+  volume: string | null;
+  source: string;
+};
+
+export type PortfolioQuoteQualityResponse = {
+  status: string;
+  observed_at: string | null;
+  source: string | null;
+};
+
+export type PortfolioPositionValuationResponse = {
+  position: PortfolioPosition;
+  cost_basis: string;
+  quote: PortfolioQuoteResponse | null;
+  quote_quality: PortfolioQuoteQualityResponse;
+  market_value: string | null;
+  unrealized_pnl: string | null;
+  unrealized_pnl_percent: string | null;
+};
+
+export type PortfolioCurrencyValuationResponse = {
+  currency: string;
+  position_count: number;
+  quality: string;
+  cost_basis: string;
+  market_value: string | null;
+  unrealized_pnl: string | null;
+};
+
+export type PortfolioValuationResponse = {
+  portfolio: Portfolio;
+  assessed_at: string;
+  maximum_quote_age_seconds: number;
+  quality: string;
+  positions: PortfolioPositionValuationResponse[];
+  currencies: PortfolioCurrencyValuationResponse[];
+};
+
 export class PortfolioApiError extends Error {
   readonly status: number;
 
@@ -115,6 +158,19 @@ export async function fetchPortfolio(
 ): Promise<PortfolioDetail> {
   return requestJson<PortfolioDetail>(
     `${API_BASE_URL}/portfolios/${encodeURIComponent(portfolioId)}`,
+  );
+}
+
+export async function fetchPortfolioValuation(
+  portfolioId: string,
+  maximumAgeSeconds = 900,
+): Promise<PortfolioValuationResponse> {
+  return requestJson<PortfolioValuationResponse>(
+    `${API_BASE_URL}/portfolios/${encodeURIComponent(
+      portfolioId,
+    )}/valuation?maximum_age_seconds=${encodeURIComponent(
+      String(maximumAgeSeconds),
+    )}`,
   );
 }
 
