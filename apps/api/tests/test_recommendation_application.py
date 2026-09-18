@@ -15,6 +15,9 @@ from app.db.models.event import EventRecord
 from app.db.models.instrument import Instrument
 from app.db.models.market_impact import MarketImpactRecord
 from app.db.models.recommendation import RecommendationRecord
+from app.db.models.recommendation_provenance import (
+    RecommendationProvenanceRecord,
+)
 from app.db.models.signal import SignalRecord
 from app.events.models import MarketEvent
 from app.events.persistence import EventPersistenceService
@@ -26,6 +29,7 @@ from app.recommendations.application import (
     RecommendationApplicationService,
     RecommendationMarketImpactRequiredError,
 )
+from app.risk.models import ConfidenceLevel, RiskLevel
 from app.signals.persistence import SignalPersistenceService
 from app.signals.service import SignalIntelligenceService
 
@@ -155,6 +159,11 @@ async def cleanup(
 ) -> None:
     if signal_id is not None:
         await db_session.execute(
+            delete(RecommendationProvenanceRecord).where(
+                RecommendationProvenanceRecord.signal_id == signal_id,
+            ),
+        )
+        await db_session.execute(
             delete(RecommendationRecord).where(
                 RecommendationRecord.signal_id == signal_id,
             ),
@@ -191,7 +200,7 @@ async def cleanup(
 
 
 @pytest.mark.asyncio
-async def test_generates_recommendation_from_persisted_signal(
+async def test_generates_recommendation_with_provenance(
     db_session,
 ) -> None:
     ticker = f"TST{uuid4().hex[:8].upper()}"
@@ -204,9 +213,15 @@ async def test_generates_recommendation_from_persisted_signal(
     )
 
     try:
-        record = await RecommendationApplicationService().generate_from_signal(
+        service = RecommendationApplicationService()
+
+        record = await service.generate_from_signal(
             db_session,
             signal_id,
+        )
+        provenance = await service.get_provenance(
+            db_session,
+            record.id,
         )
 
         assert record.signal_id == signal_id
@@ -216,11 +231,23 @@ async def test_generates_recommendation_from_persisted_signal(
         assert record.state == "consider"
         assert record.confidence_score == 0.84
         assert record.risk_score == 0.16
-        assert record.confidence_level == "high"
-        assert record.risk_level == "low"
-        assert record.evidence_article_ids
-        assert record.assumptions
-        assert "research-oriented" in record.rationale.lower()
+        assert record.confidence_level == ConfidenceLevel.HIGH.value
+        assert record.risk_level == RiskLevel.LOW.value
+
+        assert provenance.recommendation_id == record.id
+        assert provenance.signal_id == signal_id
+        assert provenance.market_impact_id == record.signal_id or (
+            provenance.market_impact_id is not None
+        )
+        assert provenance.event_id == event.event_id
+        assert provenance.ruleset_version == "1.0.0"
+        assert signal_id in provenance.input_ids
+        assert provenance.event_id in provenance.input_ids
+        assert provenance.evidence_article_ids
+        assert provenance.assumptions
+        assert provenance.invalidation_conditions == (
+            tuple(record.invalidation_conditions)
+        )
     finally:
         await cleanup(
             db_session,
@@ -231,7 +258,7 @@ async def test_generates_recommendation_from_persisted_signal(
 
 
 @pytest.mark.asyncio
-async def test_recommendation_generation_is_idempotent(
+async def test_recommendation_generation_is_idempotent_with_provenance(
     db_session,
 ) -> None:
     ticker = f"TST{uuid4().hex[:8].upper()}"
@@ -255,7 +282,7 @@ async def test_recommendation_generation_is_idempotent(
             signal_id,
         )
 
-        records = (
+        recommendations = (
             (
                 await db_session.execute(
                     select(RecommendationRecord).where(
@@ -266,9 +293,21 @@ async def test_recommendation_generation_is_idempotent(
             .scalars()
             .all()
         )
+        provenance_records = (
+            (
+                await db_session.execute(
+                    select(RecommendationProvenanceRecord).where(
+                        RecommendationProvenanceRecord.signal_id == signal_id,
+                    ),
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         assert first.id == second.id
-        assert len(records) == 1
+        assert len(recommendations) == 1
+        assert len(provenance_records) == 1
     finally:
         await cleanup(
             db_session,
