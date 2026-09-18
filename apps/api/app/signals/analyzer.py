@@ -57,6 +57,7 @@ class SignalAnalyzer:
         return MarketSignal(
             event_id=market_impact.event_id,
             company_name=market_impact.company_name,
+            ticker=market_impact.ticker,
             direction=direction,
             strength=strength,
             opportunity=opportunity,
@@ -186,7 +187,7 @@ class SignalAnalyzer:
 
         return (
             "New evidence contradicting the event interpretation.",
-            ("Material changes to the underlying economic transmission mechanism."),
+            "Material changes to the underlying economic transmission mechanism.",
             "A reversal or cancellation of the underlying event.",
         )
 

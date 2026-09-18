@@ -7,7 +7,13 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.market_impact.persistence import MarketImpactNotFoundError
 
+from .application import (
+    SignalApplicationService,
+    SignalInstrumentNotFoundError,
+    SignalInstrumentResolutionError,
+)
 from .models import MarketSignal
 from .persistence import SignalNotFoundError, SignalPersistenceService
 
@@ -19,6 +25,7 @@ router = APIRouter(
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 _persistence_service = SignalPersistenceService()
+_application_service = SignalApplicationService()
 
 
 class SignalCreateRequest(MarketSignal):
@@ -68,6 +75,40 @@ async def create_signal(
         instrument_id=request.instrument_id,
         created_at=request.created_at,
     )
+
+    return _to_response(record)
+
+
+@router.post(
+    "/from-market-impact/{market_impact_id}",
+    response_model=SignalResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Generate and persist a signal from a market impact",
+)
+async def create_signal_from_market_impact(
+    market_impact_id: UUID,
+    session: DatabaseSession,
+) -> SignalResponse:
+    try:
+        record = await _application_service.generate_from_market_impact(
+            session,
+            market_impact_id,
+        )
+    except MarketImpactNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SignalInstrumentNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SignalInstrumentResolutionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
     return _to_response(record)
 

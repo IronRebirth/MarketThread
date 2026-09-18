@@ -20,6 +20,7 @@ class MarketImpactResponse(BaseModel):
     company_impact_id: UUID
     event_id: UUID
     company_name: str = Field(min_length=1, max_length=255)
+    ticker: str | None = Field(default=None, max_length=32)
     impact_type: ImpactType
     direction: CompanyImpactDirection
     factor: ImpactFactor
@@ -41,6 +42,7 @@ def to_market_impact_response(
         company_impact_id=company_impact_id,
         event_id=impact.event_id,
         company_name=impact.company_name,
+        ticker=impact.ticker,
         impact_type=impact.impact_type,
         direction=impact.direction,
         factor=impact.factor,

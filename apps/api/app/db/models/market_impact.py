@@ -36,6 +36,11 @@ class MarketImpactRecord(Base):
         nullable=False,
         index=True,
     )
+    ticker: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        index=True,
+    )
     impact_type: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

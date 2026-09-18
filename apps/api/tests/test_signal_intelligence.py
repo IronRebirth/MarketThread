@@ -28,6 +28,7 @@ def make_market_impact(
     return MarketImpact(
         event_id=event_id,
         company_name="NVIDIA",
+        ticker="NVDA",
         impact_type=impact_type,
         direction=CompanyImpactDirection(direction.value),
         factor=ImpactFactor.DEMAND,
@@ -45,6 +46,7 @@ def test_generates_strong_positive_opportunity() -> None:
 
     assert signal.event_id == market_impact.event_id
     assert signal.company_name == "NVIDIA"
+    assert signal.ticker == "NVDA"
     assert signal.direction == SignalDirection.POSITIVE
     assert signal.strength == SignalStrength.STRONG
     assert signal.opportunity == SignalOpportunity.OPPORTUNITY

@@ -37,6 +37,7 @@ class MarketImpactAnalyzer:
         return MarketImpact(
             event_id=company_impact.event_id,
             company_name=company_impact.company_name,
+            ticker=company_impact.ticker,
             impact_type=company_impact.impact_type,
             direction=company_impact.direction,
             factor=factor,
