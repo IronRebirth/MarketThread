@@ -1,15 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { useAuth } from "../auth/auth-provider";
 import { ThemeSwitcher } from "../ui/theme-switcher";
+import { Button } from "../ui/button";
 
 interface TopbarProps {
   onMenuClick: () => void;
 }
 
+function getInitials(email: string) {
+  const localPart = email.split("@")[0]?.trim();
+
+  if (!localPart) {
+    return "MT";
+  }
+
+  const parts = localPart.split(/[._-]+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return localPart.slice(0, 2).toUpperCase();
+}
+
 export function Topbar({ onMenuClick }: TopbarProps) {
   const [search, setSearch] = useState("");
+  const { user, isLoading, logout } = useAuth();
+
+  const initials = useMemo(
+    () => (user ? getInitials(user.email) : "MT"),
+    [user],
+  );
 
   return (
     <header className="flex min-h-16 items-center gap-4 border-b border-border bg-surface px-4 sm:px-6">
@@ -55,13 +79,47 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         <span>Markets open</span>
       </button>
 
-      <button
-        type="button"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand text-sm font-semibold text-text-inverse"
-        aria-label="Open account menu"
-      >
-        MT
-      </button>
+      {user ? (
+        <div className="hidden items-center gap-3 sm:flex">
+          <div className="max-w-48 truncate text-right">
+            <p className="truncate text-xs font-medium text-text-primary">
+              {user.email}
+            </p>
+
+            <p className="text-xs text-text-muted">
+              Authenticated
+            </p>
+          </div>
+
+          <Button
+            variant="ghost"
+            className="min-h-10 px-3"
+            onClick={logout}
+          >
+            Sign out
+          </Button>
+
+          <div
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-text-inverse"
+            aria-label={`Account for ${user.email}`}
+          >
+            {initials}
+          </div>
+        </div>
+      ) : (
+        <div className="hidden sm:block">
+          <a
+            href="/login"
+            className="inline-flex h-10 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-text-secondary hover:bg-surface-muted hover:text-text-primary"
+          >
+            {isLoading ? "Loading" : "Sign in"}
+          </a>
+        </div>
+      )}
+
+      <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-text-inverse sm:hidden">
+        {initials}
+      </div>
     </header>
   );
 }
