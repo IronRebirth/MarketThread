@@ -17,6 +17,13 @@ from app.portfolio.application import (
     PortfolioNotFound,
     PortfolioPositionNotFound,
 )
+from app.portfolio.exposure import PortfolioExposureService
+from app.portfolio.exposure_schemas import (
+    PortfolioAssetClassExposureResponse,
+    PortfolioCurrencyExposureResponse,
+    PortfolioExposureResponse,
+    PortfolioPositionExposureResponse,
+)
 from app.portfolio.persistence import PortfolioPersistenceService
 from app.portfolio.schemas import (
     PortfolioCreateRequest,
@@ -205,6 +212,79 @@ def _to_valuation_response(
     )
 
 
+def _to_exposure_response(
+    exposure,
+) -> PortfolioExposureResponse:
+    """Convert portfolio exposure domain data into an API response."""
+
+    portfolio_response = PortfolioResponse(
+        portfolio_id=exposure.portfolio.portfolio_id,
+        name=exposure.portfolio.name,
+        created_at=exposure.portfolio.created_at,
+        updated_at=exposure.portfolio.updated_at,
+        position_count=exposure.portfolio.position_count,
+    )
+
+    positions = tuple(
+        PortfolioPositionExposureResponse(
+            position=PortfolioPositionResponse(
+                position_id=item.position.position_id,
+                portfolio_id=item.position.portfolio_id,
+                instrument_id=item.position.instrument_id,
+                quantity=item.position.quantity,
+                average_cost=item.position.average_cost,
+                created_at=item.position.created_at,
+                updated_at=item.position.updated_at,
+                symbol=item.position.symbol,
+                name=item.position.name,
+                exchange=item.position.exchange,
+                asset_class=item.position.asset_class,
+                currency=item.position.currency,
+                is_active=item.position.is_active,
+            ),
+            cost_basis=item.cost_basis,
+            market_value=item.market_value,
+            market_value_weight=item.market_value_weight,
+            quality=item.quality,
+        )
+        for item in exposure.positions
+    )
+
+    currencies = tuple(
+        PortfolioCurrencyExposureResponse(
+            currency=item.currency,
+            position_count=item.position_count,
+            quality=item.quality,
+            cost_basis=item.cost_basis,
+            market_value=item.market_value,
+        )
+        for item in exposure.currencies
+    )
+
+    asset_classes = tuple(
+        PortfolioAssetClassExposureResponse(
+            currency=item.currency,
+            asset_class=item.asset_class,
+            position_count=item.position_count,
+            quality=item.quality,
+            cost_basis=item.cost_basis,
+            market_value=item.market_value,
+            market_value_weight=item.market_value_weight,
+        )
+        for item in exposure.asset_classes
+    )
+
+    return PortfolioExposureResponse(
+        portfolio=portfolio_response,
+        assessed_at=exposure.assessed_at,
+        maximum_quote_age_seconds=exposure.maximum_quote_age_seconds,
+        quality=exposure.quality,
+        currencies=currencies,
+        asset_classes=asset_classes,
+        positions=positions,
+    )
+
+
 @router.post(
     "",
     response_model=PortfolioResponse,
@@ -336,6 +416,49 @@ async def get_portfolio_valuation(
         ) from None
 
     return _to_valuation_response(valuation)
+
+
+@router.get(
+    "/{portfolio_id}/exposure",
+    response_model=PortfolioExposureResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_portfolio_exposure(
+    portfolio_id: UUID,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    market_data: MarketDataServiceDependency,
+    maximum_age_seconds: Annotated[
+        int,
+        Query(
+            gt=0,
+            le=86400,
+            description="Maximum accepted quote age in seconds.",
+        ),
+    ] = 900,
+) -> PortfolioExposureResponse:
+    """Return quality-aware portfolio exposure and concentration metrics."""
+
+    exposure_service = PortfolioExposureService(
+        persistence=PortfolioPersistenceService(session),
+        market_data=market_data,
+    )
+
+    try:
+        exposure = await exposure_service.build(
+            user_id=current_user.id,
+            portfolio_id=portfolio_id,
+            maximum_quote_age=timedelta(
+                seconds=maximum_age_seconds,
+            ),
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portfolio not found.",
+        ) from None
+
+    return _to_exposure_response(exposure)
 
 
 @router.put(
