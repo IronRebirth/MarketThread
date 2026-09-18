@@ -16,6 +16,7 @@ from app.db.models.portfolio import (
     PortfolioPositionRecord,
     PortfolioRecord,
 )
+from app.db.models.portfolio_history import PortfolioPositionHistoryRecord
 from app.db.models.provenance import BacktestProvenance
 from app.db.models.recommendation import RecommendationRecord
 from app.db.models.recommendation_provenance import (
@@ -38,6 +39,7 @@ __all__ = [
     "MarketQuote",
     "NewsArticle",
     "NewsSource",
+    "PortfolioPositionHistoryRecord",
     "PortfolioPositionRecord",
     "PortfolioRecord",
     "RecommendationProvenanceRecord",

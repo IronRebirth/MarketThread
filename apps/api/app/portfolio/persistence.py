@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -9,6 +10,7 @@ from app.db.models.portfolio import (
     PortfolioPositionRecord,
     PortfolioRecord,
 )
+from app.db.models.portfolio_history import PortfolioPositionHistoryRecord
 
 
 class PortfolioPersistenceService:
@@ -148,10 +150,10 @@ class PortfolioPersistenceService:
         user_id: UUID,
         portfolio_id: UUID,
         instrument_id: UUID,
-        quantity,
-        average_cost,
+        quantity: Decimal,
+        average_cost: Decimal,
     ) -> tuple[PortfolioPositionRecord, bool]:
-        """Create or replace the current position for an instrument."""
+        """Create or replace the current position and record its history."""
 
         portfolio = await self.get_for_user(
             user_id,
@@ -188,12 +190,25 @@ class PortfolioPersistenceService:
                 average_cost=average_cost,
             )
             self.session.add(existing)
+            event_type = "created"
         else:
             existing.quantity = quantity
             existing.average_cost = average_cost
+            event_type = "updated"
 
         await self.session.flush()
         await self.session.refresh(existing)
+
+        history = PortfolioPositionHistoryRecord(
+            portfolio_id=portfolio_id,
+            instrument_id=instrument_id,
+            quantity=existing.quantity,
+            average_cost=existing.average_cost,
+            event_type=event_type,
+        )
+        self.session.add(history)
+
+        await self.session.flush()
 
         return existing, created
 
@@ -226,7 +241,7 @@ class PortfolioPersistenceService:
         portfolio_id: UUID,
         position_id: UUID,
     ) -> bool:
-        """Delete a position only when it belongs to the user's portfolio."""
+        """Record position removal before deleting its current state."""
 
         position = await self.get_position_for_user(
             user_id,
@@ -237,10 +252,51 @@ class PortfolioPersistenceService:
         if position is None:
             return False
 
+        history = PortfolioPositionHistoryRecord(
+            portfolio_id=position.portfolio_id,
+            instrument_id=position.instrument_id,
+            quantity=Decimal("0"),
+            average_cost=position.average_cost,
+            event_type="deleted",
+        )
+        self.session.add(history)
+
         await self.session.delete(position)
         await self.session.flush()
 
         return True
+
+    async def list_position_history_for_user(
+        self,
+        user_id: UUID,
+        portfolio_id: UUID,
+        instrument_id: UUID | None = None,
+    ) -> Sequence[PortfolioPositionHistoryRecord]:
+        """Return historical position states for a user-owned portfolio."""
+
+        statement = (
+            select(PortfolioPositionHistoryRecord)
+            .join(
+                PortfolioRecord,
+                PortfolioRecord.id == PortfolioPositionHistoryRecord.portfolio_id,
+            )
+            .where(
+                PortfolioPositionHistoryRecord.portfolio_id == portfolio_id,
+                PortfolioRecord.user_id == user_id,
+            )
+            .order_by(
+                PortfolioPositionHistoryRecord.sequence_id,
+            )
+        )
+
+        if instrument_id is not None:
+            statement = statement.where(
+                PortfolioPositionHistoryRecord.instrument_id == instrument_id,
+            )
+
+        result = await self.session.execute(statement)
+
+        return tuple(result.scalars().all())
 
     async def delete_for_user(
         self,
