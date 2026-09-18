@@ -41,6 +41,7 @@ class SignalResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     signal_id: UUID
+    market_impact_id: UUID | None
     instrument_id: UUID
     created_at: datetime
     event_id: UUID
@@ -164,6 +165,7 @@ async def get_signal(
 def _to_response(record) -> SignalResponse:
     return SignalResponse(
         signal_id=record.id,
+        market_impact_id=record.market_impact_id,
         instrument_id=record.instrument_id,
         created_at=record.created_at,
         event_id=record.event_id,

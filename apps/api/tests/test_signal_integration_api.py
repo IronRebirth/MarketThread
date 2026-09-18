@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 
 from app.company_impact.models import (
@@ -18,6 +19,7 @@ from app.db.models.signal import SignalRecord
 from app.events.models import MarketEvent
 from app.events.persistence import EventPersistenceService
 from app.events.types import EventCatalyst, EventType
+from app.main import app
 from app.market_impact.models import ImpactFactor, MarketImpact, TimeHorizon
 from app.market_impact.persistence import MarketImpactPersistenceService
 from app.news.intelligence.models import ImpactDirection, MarketRelevance
@@ -146,7 +148,6 @@ async def cleanup(
 
 @pytest.mark.asyncio
 async def test_generate_signal_from_market_impact(
-    client,
     db_session,
 ) -> None:
     ticker = f"TST{uuid4().hex[:8].upper()}"
@@ -168,14 +169,19 @@ async def test_generate_signal_from_market_impact(
     await db_session.refresh(instrument)
 
     try:
-        response = await client.post(
-            f"/signals/from-market-impact/{market_impact_id}",
-        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                f"/signals/from-market-impact/{market_impact_id}",
+            )
 
         assert response.status_code == 201
 
         payload = response.json()
 
+        assert payload["market_impact_id"] == str(market_impact_id)
         assert payload["instrument_id"] == str(instrument.id)
         assert payload["event_id"] == str(event_id)
         assert payload["company_name"] == "Test Company"
@@ -184,7 +190,6 @@ async def test_generate_signal_from_market_impact(
         assert payload["strength"] == "strong"
         assert payload["opportunity"] == "opportunity"
         assert payload["confidence"] == 0.84
-
     finally:
         await cleanup(
             db_session,
@@ -194,17 +199,79 @@ async def test_generate_signal_from_market_impact(
 
 
 @pytest.mark.asyncio
-async def test_missing_market_impact_returns_404(client) -> None:
-    response = await client.post(
-        f"/signals/from-market-impact/{uuid4()}",
+async def test_generate_signal_endpoint_is_idempotent(
+    db_session,
+) -> None:
+    ticker = f"TST{uuid4().hex[:8].upper()}"
+    event_id, market_impact_id = await create_market_impact(
+        db_session,
+        ticker=ticker,
     )
+
+    instrument = Instrument(
+        symbol=ticker,
+        name="Test Company",
+        exchange="TEST",
+        asset_class="equity",
+        currency="USD",
+        is_active=True,
+    )
+    db_session.add(instrument)
+    await db_session.commit()
+    await db_session.refresh(instrument)
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            first_response = await client.post(
+                f"/signals/from-market-impact/{market_impact_id}",
+            )
+            second_response = await client.post(
+                f"/signals/from-market-impact/{market_impact_id}",
+            )
+
+        assert first_response.status_code == 201
+        assert second_response.status_code == 201
+        assert first_response.json() == second_response.json()
+
+        records = (
+            (
+                await db_session.execute(
+                    select(SignalRecord).where(
+                        SignalRecord.market_impact_id == market_impact_id,
+                    ),
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        assert len(records) == 1
+    finally:
+        await cleanup(
+            db_session,
+            event_id,
+            instrument.id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_missing_market_impact_returns_404() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            f"/signals/from-market-impact/{uuid4()}",
+        )
 
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_missing_instrument_returns_404(
-    client,
     db_session,
 ) -> None:
     event_id, market_impact_id = await create_market_impact(
@@ -213,9 +280,13 @@ async def test_missing_instrument_returns_404(
     )
 
     try:
-        response = await client.post(
-            f"/signals/from-market-impact/{market_impact_id}",
-        )
+        async with AsyncClient(
+            transport=ASGITransport(app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                f"/signals/from-market-impact/{market_impact_id}",
+            )
 
         assert response.status_code == 404
         assert "No active persisted instrument" in response.json()["detail"]
@@ -228,7 +299,6 @@ async def test_missing_instrument_returns_404(
 
 @pytest.mark.asyncio
 async def test_missing_ticker_returns_422(
-    client,
     db_session,
 ) -> None:
     event_id, market_impact_id = await create_market_impact(
@@ -237,9 +307,13 @@ async def test_missing_ticker_returns_422(
     )
 
     try:
-        response = await client.post(
-            f"/signals/from-market-impact/{market_impact_id}",
-        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                f"/signals/from-market-impact/{market_impact_id}",
+            )
 
         assert response.status_code == 422
         assert "requires a ticker" in response.json()["detail"]
