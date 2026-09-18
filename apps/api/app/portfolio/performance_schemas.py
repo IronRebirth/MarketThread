@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.portfolio.models import Portfolio
+from app.portfolio.schemas import PortfolioResponse
 
 PerformanceQuality = Literal[
     "sufficient",
@@ -15,7 +15,7 @@ PerformanceQuality = Literal[
 
 
 class PortfolioPerformancePointResponse(BaseModel):
-    """API representation of one historical value observation."""
+    """Historical portfolio value at one observed date."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -24,7 +24,7 @@ class PortfolioPerformancePointResponse(BaseModel):
 
 
 class PortfolioCurrencyPerformanceResponse(BaseModel):
-    """API representation of one currency performance series."""
+    """Historical performance for one currency bucket."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,11 +44,11 @@ class PortfolioCurrencyPerformanceResponse(BaseModel):
 
 
 class PortfolioPerformanceResponse(BaseModel):
-    """API representation of historical portfolio performance."""
+    """API response for historical portfolio performance."""
 
     model_config = ConfigDict(from_attributes=True)
 
-    portfolio: Portfolio
+    portfolio: PortfolioResponse
     assessed_at: datetime
     lookback_start: datetime
     lookback_end: datetime
