@@ -31,6 +31,11 @@ export const primaryNavigation: NavigationItem[] = [
     description: "Economic transmission paths from events to companies.",
   },
   {
+    label: "Recommendations",
+    href: "/recommendations",
+    description: "Research recommendations derived from persisted signals.",
+  },
+  {
     label: "Watchlists",
     href: "/watchlists",
     description: "Track companies, sectors, and market themes.",
@@ -50,4 +55,4 @@ export const primaryNavigation: NavigationItem[] = [
     href: "/research",
     description: "Ask questions and explore market evidence.",
   },
-]
+];
