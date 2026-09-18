@@ -40,6 +40,9 @@ export type PortfolioQuoteResponse = {
 export type PortfolioQuoteQualityResponse = {
   status: string;
   observed_at: string | null;
+  assessed_at: string;
+  age_seconds: number | null;
+  maximum_age_seconds: number;
   source: string | null;
 };
 
@@ -69,6 +72,42 @@ export type PortfolioValuationResponse = {
   quality: string;
   positions: PortfolioPositionValuationResponse[];
   currencies: PortfolioCurrencyValuationResponse[];
+};
+
+export type PortfolioCurrencyExposureResponse = {
+  currency: string;
+  position_count: number;
+  quality: string;
+  cost_basis: string;
+  market_value: string | null;
+};
+
+export type PortfolioAssetClassExposureResponse = {
+  currency: string;
+  asset_class: string;
+  position_count: number;
+  quality: string;
+  cost_basis: string;
+  market_value: string | null;
+  market_value_weight: string | null;
+};
+
+export type PortfolioPositionExposureResponse = {
+  position: PortfolioPosition;
+  cost_basis: string;
+  market_value: string | null;
+  market_value_weight: string | null;
+  quality: string;
+};
+
+export type PortfolioExposureResponse = {
+  portfolio: Portfolio;
+  assessed_at: string;
+  maximum_quote_age_seconds: number;
+  quality: string;
+  currencies: PortfolioCurrencyExposureResponse[];
+  asset_classes: PortfolioAssetClassExposureResponse[];
+  positions: PortfolioPositionExposureResponse[];
 };
 
 export class PortfolioApiError extends Error {
@@ -169,6 +208,19 @@ export async function fetchPortfolioValuation(
     `${API_BASE_URL}/portfolios/${encodeURIComponent(
       portfolioId,
     )}/valuation?maximum_age_seconds=${encodeURIComponent(
+      String(maximumAgeSeconds),
+    )}`,
+  );
+}
+
+export async function fetchPortfolioExposure(
+  portfolioId: string,
+  maximumAgeSeconds = 900,
+): Promise<PortfolioExposureResponse> {
+  return requestJson<PortfolioExposureResponse>(
+    `${API_BASE_URL}/portfolios/${encodeURIComponent(
+      portfolioId,
+    )}/exposure?maximum_age_seconds=${encodeURIComponent(
       String(maximumAgeSeconds),
     )}`,
   );

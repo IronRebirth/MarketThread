@@ -5,17 +5,20 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "../auth/auth-provider";
 import { PortfolioPositionForm } from "./portfolio-position-form";
+import { PortfolioExposurePanel } from "./portfolio-exposure-panel";
 import { PortfolioValuationPanel } from "./portfolio-valuation-panel";
 import {
   createPortfolio,
   deletePortfolio,
   fetchPortfolio,
+  fetchPortfolioExposure,
   fetchPortfolioValuation,
   fetchPortfolios,
   PortfolioApiError,
   removePortfolioPosition,
   type Portfolio,
   type PortfolioDetail,
+  type PortfolioExposureResponse,
   type PortfolioPosition,
   type PortfolioValuationResponse,
 } from "../../lib/portfolio-api";
@@ -150,10 +153,14 @@ export function PortfolioDashboard() {
     useState<PortfolioDetail | null>(null);
   const [selectedValuation, setSelectedValuation] =
     useState<PortfolioValuationResponse | null>(null);
+  const [selectedExposure, setSelectedExposure] =
+    useState<PortfolioExposureResponse | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isValuationLoading, setIsValuationLoading] =
+    useState(false);
+  const [isExposureLoading, setIsExposureLoading] =
     useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(
@@ -163,6 +170,8 @@ export function PortfolioDashboard() {
     string | null
   >(null);
   const [valuationErrorMessage, setValuationErrorMessage] =
+    useState<string | null>(null);
+  const [exposureErrorMessage, setExposureErrorMessage] =
     useState<string | null>(null);
 
   const [portfolioName, setPortfolioName] = useState("");
@@ -264,12 +273,41 @@ export function PortfolioDashboard() {
     [],
   );
 
+  const loadSelectedPortfolioExposure = useCallback(
+    async (portfolioId: string) => {
+      setIsExposureLoading(true);
+      setExposureErrorMessage(null);
+
+      try {
+        const exposure = await fetchPortfolioExposure(
+          portfolioId,
+          900,
+        );
+
+        setSelectedExposure(exposure);
+      } catch (error) {
+        setSelectedExposure(null);
+        setExposureErrorMessage(
+          getErrorMessage(
+            error,
+            "The portfolio exposure could not be loaded.",
+          ),
+        );
+      } finally {
+        setIsExposureLoading(false);
+      }
+    },
+    [],
+  );
+
   const loadSelectedPortfolio = useCallback(
     async (portfolioId: string) => {
       setIsDetailLoading(true);
       setDetailErrorMessage(null);
       setSelectedValuation(null);
       setValuationErrorMessage(null);
+      setSelectedExposure(null);
+      setExposureErrorMessage(null);
 
       try {
         const detail = await fetchPortfolio(portfolioId);
@@ -288,8 +326,12 @@ export function PortfolioDashboard() {
       }
 
       void loadSelectedPortfolioValuation(portfolioId);
+      void loadSelectedPortfolioExposure(portfolioId);
     },
-    [loadSelectedPortfolioValuation],
+    [
+      loadSelectedPortfolioExposure,
+      loadSelectedPortfolioValuation,
+    ],
   );
 
   useEffect(() => {
@@ -423,6 +465,7 @@ export function PortfolioDashboard() {
 
       setSelectedPortfolio(null);
       setSelectedValuation(null);
+      setSelectedExposure(null);
       setSelectedPortfolioId(null);
 
       await loadPortfolios();
@@ -477,8 +520,8 @@ export function PortfolioDashboard() {
 
           <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
             Maintain persisted holdings and inspect server-backed
-            valuation with explicit quote freshness and currency
-            boundaries.
+            valuation and exposure with explicit quote freshness and
+            currency boundaries.
           </p>
 
           {user && (
@@ -711,6 +754,17 @@ export function PortfolioDashboard() {
                 }
               />
 
+              <PortfolioExposurePanel
+                exposure={selectedExposure}
+                isLoading={isExposureLoading}
+                errorMessage={exposureErrorMessage}
+                onRefresh={() =>
+                  void loadSelectedPortfolioExposure(
+                    selectedPortfolio.portfolio_id,
+                  )
+                }
+              />
+
               <PortfolioPositionForm
                 portfolioId={selectedPortfolio.portfolio_id}
                 onPositionSaved={handlePositionSaved}
@@ -883,8 +937,8 @@ export function PortfolioDashboard() {
                   />
 
                   <ReadinessNote
-                    title="Portfolio risk"
-                    description="Portfolio-level concentration and exposure analysis remains separate from valuation."
+                    title="Exposure analysis"
+                    description="Currency, asset-class, and position concentration are now derived from quality-aware valuation data without creating a fabricated portfolio risk score."
                   />
                 </div>
               </Card>
