@@ -110,6 +110,45 @@ export type PortfolioExposureResponse = {
   positions: PortfolioPositionExposureResponse[];
 };
 
+export type PortfolioPerformanceQuality =
+  | "sufficient"
+  | "insufficient"
+  | "unavailable"
+  | "empty";
+
+export type PortfolioPerformancePointResponse = {
+  observed_on: string;
+  value: string;
+};
+
+export type PortfolioCurrencyPerformanceResponse = {
+  currency: string;
+  position_count: number;
+  quality: PortfolioPerformanceQuality;
+  first_observed_on: string | null;
+  last_observed_on: string | null;
+  observation_count: number;
+  return_count: number;
+  initial_value: string | null;
+  latest_value: string | null;
+  period_return: string | null;
+  points: PortfolioPerformancePointResponse[];
+  sources: string[];
+  notes: string[];
+};
+
+export type PortfolioPerformanceResponse = {
+  portfolio: Portfolio;
+  assessed_at: string;
+  lookback_start: string;
+  lookback_end: string;
+  lookback_days: number;
+  position_count: number;
+  quality: PortfolioPerformanceQuality;
+  methodology: string;
+  currencies: PortfolioCurrencyPerformanceResponse[];
+};
+
 export type PortfolioRiskIndicatorKind =
   | "valuation_data_quality"
   | "single_instrument_currency_exposure"
@@ -249,6 +288,19 @@ export async function fetchPortfolioExposure(
       portfolioId,
     )}/exposure?maximum_age_seconds=${encodeURIComponent(
       String(maximumAgeSeconds),
+    )}`,
+  );
+}
+
+export async function fetchPortfolioPerformance(
+  portfolioId: string,
+  lookbackDays = 365,
+): Promise<PortfolioPerformanceResponse> {
+  return requestJson<PortfolioPerformanceResponse>(
+    `${API_BASE_URL}/portfolios/${encodeURIComponent(
+      portfolioId,
+    )}/performance?lookback_days=${encodeURIComponent(
+      String(lookbackDays),
     )}`,
   );
 }

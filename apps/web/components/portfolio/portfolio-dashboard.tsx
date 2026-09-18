@@ -4,14 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "../auth/auth-provider";
-import { PortfolioPositionForm } from "./portfolio-position-form";
 import { PortfolioExposurePanel } from "./portfolio-exposure-panel";
+import { PortfolioPerformancePanel } from "./portfolio-performance-panel";
+import { PortfolioPositionForm } from "./portfolio-position-form";
 import { PortfolioValuationPanel } from "./portfolio-valuation-panel";
 import {
   createPortfolio,
   deletePortfolio,
   fetchPortfolio,
   fetchPortfolioExposure,
+  fetchPortfolioPerformance,
   fetchPortfolioValuation,
   fetchPortfolios,
   PortfolioApiError,
@@ -19,6 +21,7 @@ import {
   type Portfolio,
   type PortfolioDetail,
   type PortfolioExposureResponse,
+  type PortfolioPerformanceResponse,
   type PortfolioPosition,
   type PortfolioValuationResponse,
 } from "../../lib/portfolio-api";
@@ -155,12 +158,19 @@ export function PortfolioDashboard() {
     useState<PortfolioValuationResponse | null>(null);
   const [selectedExposure, setSelectedExposure] =
     useState<PortfolioExposureResponse | null>(null);
+  const [selectedPerformance, setSelectedPerformance] =
+    useState<PortfolioPerformanceResponse | null>(null);
+
+  const [performanceLookbackDays, setPerformanceLookbackDays] =
+    useState(365);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isValuationLoading, setIsValuationLoading] =
     useState(false);
   const [isExposureLoading, setIsExposureLoading] =
+    useState(false);
+  const [isPerformanceLoading, setIsPerformanceLoading] =
     useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(
@@ -172,6 +182,8 @@ export function PortfolioDashboard() {
   const [valuationErrorMessage, setValuationErrorMessage] =
     useState<string | null>(null);
   const [exposureErrorMessage, setExposureErrorMessage] =
+    useState<string | null>(null);
+  const [performanceErrorMessage, setPerformanceErrorMessage] =
     useState<string | null>(null);
 
   const [portfolioName, setPortfolioName] = useState("");
@@ -300,6 +312,36 @@ export function PortfolioDashboard() {
     [],
   );
 
+  const loadSelectedPortfolioPerformance = useCallback(
+    async (
+      portfolioId: string,
+      lookbackDays: number,
+    ) => {
+      setIsPerformanceLoading(true);
+      setPerformanceErrorMessage(null);
+
+      try {
+        const performance = await fetchPortfolioPerformance(
+          portfolioId,
+          lookbackDays,
+        );
+
+        setSelectedPerformance(performance);
+      } catch (error) {
+        setSelectedPerformance(null);
+        setPerformanceErrorMessage(
+          getErrorMessage(
+            error,
+            "The historical portfolio performance could not be loaded.",
+          ),
+        );
+      } finally {
+        setIsPerformanceLoading(false);
+      }
+    },
+    [],
+  );
+
   const loadSelectedPortfolio = useCallback(
     async (portfolioId: string) => {
       setIsDetailLoading(true);
@@ -308,6 +350,8 @@ export function PortfolioDashboard() {
       setValuationErrorMessage(null);
       setSelectedExposure(null);
       setExposureErrorMessage(null);
+      setSelectedPerformance(null);
+      setPerformanceErrorMessage(null);
 
       try {
         const detail = await fetchPortfolio(portfolioId);
@@ -333,6 +377,27 @@ export function PortfolioDashboard() {
       loadSelectedPortfolioValuation,
     ],
   );
+
+  useEffect(() => {
+    if (!selectedPortfolioId) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadSelectedPortfolioPerformance(
+        selectedPortfolioId,
+        performanceLookbackDays,
+      );
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    selectedPortfolioId,
+    performanceLookbackDays,
+    loadSelectedPortfolioPerformance,
+  ]);
 
   useEffect(() => {
     if (!selectedPortfolioId) {
@@ -409,6 +474,10 @@ export function PortfolioDashboard() {
     await Promise.all([
       loadPortfolios(),
       loadSelectedPortfolio(selectedPortfolioId),
+      loadSelectedPortfolioPerformance(
+        selectedPortfolioId,
+        performanceLookbackDays,
+      ),
     ]);
   };
 
@@ -431,6 +500,10 @@ export function PortfolioDashboard() {
       await Promise.all([
         loadPortfolios(),
         loadSelectedPortfolio(selectedPortfolioId),
+        loadSelectedPortfolioPerformance(
+          selectedPortfolioId,
+          performanceLookbackDays,
+        ),
       ]);
     } catch (error) {
       setDetailErrorMessage(
@@ -466,6 +539,7 @@ export function PortfolioDashboard() {
       setSelectedPortfolio(null);
       setSelectedValuation(null);
       setSelectedExposure(null);
+      setSelectedPerformance(null);
       setSelectedPortfolioId(null);
 
       await loadPortfolios();
@@ -520,8 +594,8 @@ export function PortfolioDashboard() {
 
           <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
             Maintain persisted holdings and inspect server-backed
-            valuation and exposure with explicit quote freshness and
-            currency boundaries.
+            valuation, historical performance, and exposure with
+            explicit data-quality and currency boundaries.
           </p>
 
           {user && (
@@ -754,6 +828,20 @@ export function PortfolioDashboard() {
                 }
               />
 
+              <PortfolioPerformancePanel
+                performance={selectedPerformance}
+                isLoading={isPerformanceLoading}
+                errorMessage={performanceErrorMessage}
+                lookbackDays={performanceLookbackDays}
+                onLookbackDaysChange={setPerformanceLookbackDays}
+                onRefresh={() =>
+                  void loadSelectedPortfolioPerformance(
+                    selectedPortfolio.portfolio_id,
+                    performanceLookbackDays,
+                  )
+                }
+              />
+
               <PortfolioExposurePanel
                 exposure={selectedExposure}
                 isLoading={isExposureLoading}
@@ -938,7 +1026,7 @@ export function PortfolioDashboard() {
 
                   <ReadinessNote
                     title="Exposure analysis"
-                    description="Currency, asset-class, and position concentration are now derived from quality-aware valuation data without creating a fabricated portfolio risk score."
+                    description="Currency, asset-class, and position concentration are derived from quality-aware valuation data without creating a fabricated portfolio risk score."
                   />
                 </div>
               </Card>
