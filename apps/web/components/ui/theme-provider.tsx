@@ -6,7 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -19,9 +19,29 @@ interface ThemeContextValue {
   resolvedTheme: ResolvedTheme;
 }
 
-const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
+const ThemeContext = createContext<ThemeContextValue | undefined>(
+  undefined,
+);
 
 const STORAGE_KEY = "marketthread-theme";
+const THEME_CHANGE_EVENT = "marketthread-theme-change";
+
+const DEFAULT_THEME: Theme = "system";
+const DEFAULT_RESOLVED_THEME: ResolvedTheme = "light";
+
+function getStoredTheme(): Theme {
+  const storedTheme = window.localStorage.getItem(STORAGE_KEY);
+
+  if (
+    storedTheme === "light" ||
+    storedTheme === "dark" ||
+    storedTheme === "system"
+  ) {
+    return storedTheme;
+  }
+
+  return DEFAULT_THEME;
+}
 
 function getSystemTheme(): ResolvedTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -29,22 +49,34 @@ function getSystemTheme(): ResolvedTheme {
     : "light";
 }
 
-function getInitialTheme(): Theme {
-  if (typeof window === "undefined") {
-    return "system";
-  }
+function subscribeToTheme(callback: () => void) {
+  window.addEventListener(THEME_CHANGE_EVENT, callback);
+  window.addEventListener("storage", callback);
 
-  const storedTheme = window.localStorage.getItem(STORAGE_KEY);
-
-  return storedTheme === "light" ||
-    storedTheme === "dark" ||
-    storedTheme === "system"
-    ? storedTheme
-    : "system";
+  return () => {
+    window.removeEventListener(THEME_CHANGE_EVENT, callback);
+    window.removeEventListener("storage", callback);
+  };
 }
 
-function resolveTheme(theme: Theme): ResolvedTheme {
-  return theme === "system" ? getSystemTheme() : theme;
+function getServerTheme(): Theme {
+  return DEFAULT_THEME;
+}
+
+function subscribeToSystemTheme(callback: () => void) {
+  const mediaQuery = window.matchMedia(
+    "(prefers-color-scheme: dark)",
+  );
+
+  mediaQuery.addEventListener("change", callback);
+
+  return () => {
+    mediaQuery.removeEventListener("change", callback);
+  };
+}
+
+function getServerSystemTheme(): ResolvedTheme {
+  return DEFAULT_RESOLVED_THEME;
 }
 
 interface ThemeProviderProps {
@@ -52,39 +84,28 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    typeof window === "undefined" ? "light" : resolveTheme(getInitialTheme()),
+  const theme = useSyncExternalStore(
+    subscribeToTheme,
+    getStoredTheme,
+    getServerTheme,
   );
 
+  const systemTheme = useSyncExternalStore(
+    subscribeToSystemTheme,
+    getSystemTheme,
+    getServerSystemTheme,
+  );
+
+  const resolvedTheme =
+    theme === "system" ? systemTheme : theme;
+
   useEffect(() => {
-    const updateTheme = () => {
-      const nextResolvedTheme = resolveTheme(theme);
-
-      document.documentElement.dataset.theme = nextResolvedTheme;
-      setResolvedTheme(nextResolvedTheme);
-    };
-
-    updateTheme();
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const handleSystemThemeChange = () => {
-      if (theme === "system") {
-        updateTheme();
-      }
-    };
-
-    mediaQuery.addEventListener("change", handleSystemThemeChange);
-
-    return () => {
-      mediaQuery.removeEventListener("change", handleSystemThemeChange);
-    };
-  }, [theme]);
+    document.documentElement.dataset.theme = resolvedTheme;
+  }, [resolvedTheme]);
 
   const setTheme = useCallback((nextTheme: Theme) => {
     window.localStorage.setItem(STORAGE_KEY, nextTheme);
-    setThemeState(nextTheme);
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   }, []);
 
   const value = useMemo(
@@ -97,7 +118,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   );
 
   return (
-    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+    <ThemeContext.Provider value={value}>
+      {children}
+    </ThemeContext.Provider>
   );
 }
 
