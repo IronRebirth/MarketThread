@@ -1,6 +1,7 @@
 import type { Recommendation } from "../../lib/recommendations-api";
 import { Badge } from "../ui/badge";
 import { Card } from "../ui/card";
+import { RecommendationProvenancePanel } from "./recommendation-provenance-panel";
 
 function formatPercentage(value: number) {
   return `${(value * 100).toFixed(0)}%`;
@@ -177,6 +178,10 @@ export function RecommendationCard({
             monospace
           />
         </div>
+
+        <RecommendationProvenancePanel
+          recommendationId={recommendation.recommendation_id}
+        />
       </div>
     </Card>
   );

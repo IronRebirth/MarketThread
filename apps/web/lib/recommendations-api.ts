@@ -27,6 +27,19 @@ export type Recommendation = {
   rationale: string;
 };
 
+export type RecommendationProvenance = {
+  recommendation_id: string;
+  signal_id: string;
+  market_impact_id: string;
+  event_id: string;
+  created_at: string;
+  ruleset_version: string;
+  input_ids: string[];
+  evidence_article_ids: string[];
+  assumptions: string[];
+  invalidation_conditions: string[];
+};
+
 export type RecommendationFilters = {
   signalId?: string;
   companyName?: string;
@@ -141,5 +154,15 @@ export async function generateRecommendationFromSignal(
     {
       method: "POST",
     },
+  );
+}
+
+export async function fetchRecommendationProvenance(
+  recommendationId: string,
+): Promise<RecommendationProvenance> {
+  return getJson<RecommendationProvenance>(
+    `${API_BASE_URL}/recommendations/${encodeURIComponent(
+      recommendationId,
+    )}/provenance`,
   );
 }
