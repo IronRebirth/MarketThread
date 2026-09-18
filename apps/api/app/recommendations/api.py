@@ -20,6 +20,10 @@ from .persistence import (
     RecommendationNotFoundError,
     RecommendationPersistenceService,
 )
+from .provenance_persistence import (
+    RecommendationProvenanceNotFoundError,
+    RecommendationProvenancePersistenceService,
+)
 
 router = APIRouter(
     prefix="/recommendations",
@@ -29,7 +33,11 @@ router = APIRouter(
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 _persistence_service = RecommendationPersistenceService()
-_application_service = RecommendationApplicationService()
+_provenance_persistence_service = RecommendationProvenancePersistenceService()
+_application_service = RecommendationApplicationService(
+    recommendation_persistence=_persistence_service,
+    provenance_persistence=_provenance_persistence_service,
+)
 
 
 class RecommendationResponse(BaseModel):
@@ -56,6 +64,23 @@ class RecommendationResponse(BaseModel):
     invalidation_conditions: tuple[str, ...]
     evidence_article_ids: tuple[UUID, ...]
     rationale: str
+
+
+class RecommendationProvenanceResponse(BaseModel):
+    """Recommendation provenance response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    recommendation_id: UUID
+    signal_id: UUID
+    market_impact_id: UUID
+    event_id: UUID
+    created_at: datetime
+    ruleset_version: str
+    input_ids: tuple[UUID, ...]
+    evidence_article_ids: tuple[UUID, ...]
+    assumptions: tuple[str, ...]
+    invalidation_conditions: tuple[str, ...]
 
 
 @router.post(
@@ -131,6 +156,66 @@ async def list_recommendations(
         ) from exc
 
     return tuple(_to_response(record) for record in records)
+
+
+@router.get(
+    "/{recommendation_id}/provenance",
+    response_model=RecommendationProvenanceResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get recommendation provenance",
+)
+async def get_recommendation_provenance(
+    recommendation_id: UUID,
+    session: DatabaseSession,
+) -> RecommendationProvenanceResponse:
+    try:
+        provenance = await _application_service.get_provenance(
+            session,
+            recommendation_id,
+        )
+    except RecommendationNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SignalNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except MarketImpactNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except RecommendationMarketImpactRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except RecommendationDataConsistencyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except RecommendationProvenanceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return RecommendationProvenanceResponse(
+        recommendation_id=provenance.recommendation_id,
+        signal_id=provenance.signal_id,
+        market_impact_id=provenance.market_impact_id,
+        event_id=provenance.event_id,
+        created_at=provenance.created_at,
+        ruleset_version=provenance.ruleset_version,
+        input_ids=provenance.input_ids,
+        evidence_article_ids=provenance.evidence_article_ids,
+        assumptions=provenance.assumptions,
+        invalidation_conditions=provenance.invalidation_conditions,
+    )
 
 
 @router.get(

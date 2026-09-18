@@ -16,6 +16,9 @@ from app.db.models.event import EventRecord
 from app.db.models.instrument import Instrument
 from app.db.models.market_impact import MarketImpactRecord
 from app.db.models.recommendation import RecommendationRecord
+from app.db.models.recommendation_provenance import (
+    RecommendationProvenanceRecord,
+)
 from app.db.models.signal import SignalRecord
 from app.events.models import MarketEvent
 from app.events.persistence import EventPersistenceService
@@ -152,6 +155,11 @@ async def cleanup(
     instrument_id: UUID,
 ) -> None:
     await db_session.execute(
+        delete(RecommendationProvenanceRecord).where(
+            RecommendationProvenanceRecord.signal_id == signal_id,
+        ),
+    )
+    await db_session.execute(
         delete(RecommendationRecord).where(
             RecommendationRecord.signal_id == signal_id,
         ),
@@ -185,7 +193,7 @@ async def cleanup(
 
 
 @pytest.mark.asyncio
-async def test_generate_get_and_list_recommendations(
+async def test_generate_get_list_and_provenance_recommendations(
     db_session,
 ) -> None:
     ticker = f"TST{uuid4().hex[:8].upper()}"
@@ -228,6 +236,26 @@ async def test_generate_get_and_list_recommendations(
                 recommendation_id,
             )
 
+            provenance_response = await client.get(
+                f"/recommendations/{recommendation_id}/provenance",
+            )
+
+            assert provenance_response.status_code == 200
+
+            provenance = provenance_response.json()
+
+            assert provenance["recommendation_id"] == str(
+                recommendation_id,
+            )
+            assert provenance["signal_id"] == str(signal_id)
+            assert provenance["event_id"] == str(event.event_id)
+            assert provenance["ruleset_version"] == "1.0.0"
+            assert str(signal_id) in provenance["input_ids"]
+            assert str(event.event_id) in provenance["input_ids"]
+            assert provenance["evidence_article_ids"]
+            assert provenance["assumptions"]
+            assert provenance["invalidation_conditions"]
+
             list_response = await client.get(
                 "/recommendations",
                 params={
@@ -249,7 +277,7 @@ async def test_generate_get_and_list_recommendations(
 
 
 @pytest.mark.asyncio
-async def test_generate_recommendation_is_idempotent(
+async def test_generate_recommendation_is_idempotent_with_provenance(
     db_session,
 ) -> None:
     ticker = f"TST{uuid4().hex[:8].upper()}"
@@ -288,7 +316,20 @@ async def test_generate_recommendation_is_idempotent(
                 .all()
             )
 
+            provenance_records = (
+                (
+                    await db_session.execute(
+                        select(RecommendationProvenanceRecord).where(
+                            RecommendationProvenanceRecord.signal_id == signal_id,
+                        ),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
             assert len(records) == 1
+            assert len(provenance_records) == 1
     finally:
         await cleanup(
             db_session,
@@ -319,6 +360,19 @@ async def test_missing_recommendation_returns_404() -> None:
     ) as client:
         response = await client.get(
             f"/recommendations/{uuid4()}",
+        )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_missing_recommendation_provenance_target_returns_404() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            f"/recommendations/{uuid4()}/provenance",
         )
 
     assert response.status_code == 404

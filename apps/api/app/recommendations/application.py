@@ -14,6 +14,10 @@ from app.signals.models import (
 from app.signals.persistence import SignalPersistenceService
 
 from .persistence import RecommendationPersistenceService
+from .provenance import RecommendationProvenance
+from .provenance_persistence import (
+    RecommendationProvenancePersistenceService,
+)
 from .service import RecommendationIntelligenceService
 
 
@@ -26,7 +30,7 @@ class RecommendationDataConsistencyError(Exception):
 
 
 class RecommendationApplicationService:
-    """Coordinate persisted signals, risk assessment, and recommendations."""
+    """Coordinate persisted signals, risk, recommendations, and provenance."""
 
     def __init__(
         self,
@@ -35,6 +39,9 @@ class RecommendationApplicationService:
         risk_confidence_service: RiskConfidenceService | None = None,
         recommendation_service: RecommendationIntelligenceService | None = None,
         recommendation_persistence: RecommendationPersistenceService | None = None,
+        provenance_persistence: (
+            RecommendationProvenancePersistenceService | None
+        ) = None,
     ) -> None:
         self._signal_persistence = signal_persistence or SignalPersistenceService()
         self._market_impact_persistence = (
@@ -49,13 +56,16 @@ class RecommendationApplicationService:
         self._recommendation_persistence = (
             recommendation_persistence or RecommendationPersistenceService()
         )
+        self._provenance_persistence = (
+            provenance_persistence or RecommendationProvenancePersistenceService()
+        )
 
     async def generate_from_signal(
         self,
         session: AsyncSession,
         signal_id: UUID,
     ):
-        """Generate or retrieve the recommendation for a persisted signal."""
+        """Generate or retrieve a recommendation and its provenance."""
 
         existing = await self._recommendation_persistence.get_by_signal_id(
             session,
@@ -63,12 +73,162 @@ class RecommendationApplicationService:
         )
 
         if existing is not None:
+            await self._ensure_provenance(
+                session,
+                existing,
+            )
             return existing
 
         signal_record = await self._signal_persistence.get(
             session,
             signal_id,
         )
+
+        market_impact = await self._get_market_impact(
+            session,
+            signal_record,
+        )
+
+        signal = self._to_domain_signal(signal_record)
+
+        risk_confidence = self._risk_confidence_service.analyze(
+            signal,
+            market_impact,
+        )
+
+        recommendation = self._recommendation_service.analyze(
+            signal,
+            risk_confidence,
+        )
+
+        record = await self._recommendation_persistence.create(
+            session,
+            recommendation=recommendation,
+            signal_id=signal_id,
+            created_at=datetime.now(UTC),
+        )
+
+        await self._create_provenance(
+            session,
+            record,
+            signal_record,
+        )
+
+        return record
+
+    async def get_provenance(
+        self,
+        session: AsyncSession,
+        recommendation_id: UUID,
+    ):
+        """Retrieve the provenance associated with a recommendation."""
+
+        recommendation = await self._recommendation_persistence.get(
+            session,
+            recommendation_id,
+        )
+
+        provenance = await self._provenance_persistence.get_by_recommendation_id(
+            session,
+            recommendation.id,
+        )
+
+        if provenance is None:
+            signal_record = await self._signal_persistence.get(
+                session,
+                recommendation.signal_id,
+            )
+            await self._get_market_impact(
+                session,
+                signal_record,
+            )
+            provenance = await self._create_provenance(
+                session,
+                recommendation,
+                signal_record,
+            )
+
+        return self._provenance_persistence.to_domain(provenance)
+
+    async def _ensure_provenance(
+        self,
+        session: AsyncSession,
+        recommendation_record,
+    ):
+        """Create missing provenance for an existing recommendation."""
+
+        existing = await self._provenance_persistence.get_by_recommendation_id(
+            session,
+            recommendation_record.id,
+        )
+
+        if existing is not None:
+            return existing
+
+        signal_record = await self._signal_persistence.get(
+            session,
+            recommendation_record.signal_id,
+        )
+
+        await self._get_market_impact(
+            session,
+            signal_record,
+        )
+
+        return await self._create_provenance(
+            session,
+            recommendation_record,
+            signal_record,
+        )
+
+    async def _create_provenance(
+        self,
+        session: AsyncSession,
+        recommendation_record,
+        signal_record,
+    ):
+        """Create provenance from persisted recommendation inputs."""
+
+        if signal_record.market_impact_id is None:
+            raise RecommendationMarketImpactRequiredError(
+                "Recommendation provenance requires the signal to be linked "
+                "to a persisted market impact.",
+            )
+
+        provenance = RecommendationProvenance(
+            recommendation_id=recommendation_record.id,
+            signal_id=signal_record.id,
+            market_impact_id=signal_record.market_impact_id,
+            event_id=recommendation_record.event_id,
+            created_at=recommendation_record.created_at,
+            ruleset_version="1.0.0",
+            input_ids=(
+                signal_record.id,
+                signal_record.market_impact_id,
+                recommendation_record.event_id,
+            ),
+            evidence_article_ids=tuple(
+                UUID(article_id)
+                for article_id in recommendation_record.evidence_article_ids
+            ),
+            assumptions=tuple(recommendation_record.assumptions),
+            invalidation_conditions=tuple(
+                recommendation_record.invalidation_conditions,
+            ),
+        )
+
+        return await self._provenance_persistence.create(
+            session,
+            provenance=provenance,
+            created_at=recommendation_record.created_at,
+        )
+
+    async def _get_market_impact(
+        self,
+        session: AsyncSession,
+        signal_record,
+    ):
+        """Resolve and validate the market impact linked to a signal."""
 
         if signal_record.market_impact_id is None:
             raise RecommendationMarketImpactRequiredError(
@@ -86,24 +246,7 @@ class RecommendationApplicationService:
                 "Signal and market impact event identifiers do not match.",
             )
 
-        signal = self._to_domain_signal(signal_record)
-
-        risk_confidence = self._risk_confidence_service.analyze(
-            signal,
-            market_impact,
-        )
-
-        recommendation = self._recommendation_service.analyze(
-            signal,
-            risk_confidence,
-        )
-
-        return await self._recommendation_persistence.create(
-            session,
-            recommendation=recommendation,
-            signal_id=signal_id,
-            created_at=datetime.now(UTC),
-        )
+        return market_impact
 
     @staticmethod
     def _to_domain_signal(signal_record) -> MarketSignal:
