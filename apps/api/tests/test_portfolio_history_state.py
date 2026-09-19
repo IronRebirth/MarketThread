@@ -89,32 +89,60 @@ class FakePersistence:
 
     async def list_position_history_at(
         self,
-        _user_id: UUID,
-        _portfolio_id: UUID,
+        user_id: UUID,
+        portfolio_id: UUID,
         as_of: datetime,
     ) -> tuple[SimpleNamespace, ...]:
-        latest_by_instrument: dict[UUID, SimpleNamespace] = {}
+        return await self.list_position_history_for_window(
+            user_id,
+            portfolio_id,
+            start_at=as_of,
+            end_at=as_of,
+        )
+
+    async def list_position_history_for_window(
+        self,
+        user_id: UUID,
+        portfolio_id: UUID,
+        *,
+        start_at: datetime,
+        end_at: datetime,
+    ) -> tuple[SimpleNamespace, ...]:
+        latest_before_start: dict[UUID, SimpleNamespace] = {}
 
         for history in self.histories:
-            if history.recorded_at > as_of:
+            if history.portfolio_id != portfolio_id:
                 continue
 
-            current = latest_by_instrument.get(history.instrument_id)
+            if history.recorded_at <= start_at:
+                current = latest_before_start.get(
+                    history.instrument_id,
+                )
 
-            if current is None or (
-                history.recorded_at,
-                history.sequence_id,
-            ) > (
-                current.recorded_at,
-                current.sequence_id,
-            ):
-                latest_by_instrument[history.instrument_id] = history
+                if current is None or (
+                    history.recorded_at,
+                    history.sequence_id,
+                ) > (
+                    current.recorded_at,
+                    current.sequence_id,
+                ):
+                    latest_before_start[history.instrument_id] = history
+
+        changes = [
+            history
+            for history in self.histories
+            if history.portfolio_id == portfolio_id
+            and start_at < history.recorded_at <= end_at
+        ]
 
         return tuple(
             sorted(
-                latest_by_instrument.values(),
+                (
+                    *latest_before_start.values(),
+                    *changes,
+                ),
                 key=lambda history: (
-                    history.instrument_id,
+                    history.recorded_at,
                     history.sequence_id,
                 ),
             ),

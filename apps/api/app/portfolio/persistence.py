@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -302,7 +303,7 @@ class PortfolioPersistenceService:
         self,
         user_id: UUID,
         portfolio_id: UUID,
-        as_of,
+        as_of: datetime,
     ) -> Sequence[PortfolioPositionHistoryRecord]:
         """Return the latest historical state for each instrument at a point in time."""
 
@@ -352,6 +353,89 @@ class PortfolioPersistenceService:
         )
 
         return tuple(result.scalars().all())
+
+    async def list_position_history_for_window(
+        self,
+        user_id: UUID,
+        portfolio_id: UUID,
+        *,
+        start_at: datetime,
+        end_at: datetime,
+    ) -> Sequence[PortfolioPositionHistoryRecord]:
+        """Return baseline and change events needed to reconstruct a time window."""
+
+        baseline_rank = (
+            func.row_number()
+            .over(
+                partition_by=PortfolioPositionHistoryRecord.instrument_id,
+                order_by=(
+                    PortfolioPositionHistoryRecord.recorded_at.desc(),
+                    PortfolioPositionHistoryRecord.sequence_id.desc(),
+                ),
+            )
+            .label("history_rank")
+        )
+
+        baseline_history = (
+            select(
+                PortfolioPositionHistoryRecord.sequence_id.label("sequence_id"),
+                baseline_rank,
+            )
+            .join(
+                PortfolioRecord,
+                PortfolioRecord.id == PortfolioPositionHistoryRecord.portfolio_id,
+            )
+            .where(
+                PortfolioPositionHistoryRecord.portfolio_id == portfolio_id,
+                PortfolioRecord.user_id == user_id,
+                PortfolioPositionHistoryRecord.recorded_at <= start_at,
+            )
+            .subquery()
+        )
+
+        baseline_result = await self.session.execute(
+            select(PortfolioPositionHistoryRecord)
+            .join(
+                baseline_history,
+                baseline_history.c.sequence_id
+                == PortfolioPositionHistoryRecord.sequence_id,
+            )
+            .where(
+                baseline_history.c.history_rank == 1,
+            ),
+        )
+
+        changes_result = await self.session.execute(
+            select(PortfolioPositionHistoryRecord)
+            .join(
+                PortfolioRecord,
+                PortfolioRecord.id == PortfolioPositionHistoryRecord.portfolio_id,
+            )
+            .where(
+                PortfolioPositionHistoryRecord.portfolio_id == portfolio_id,
+                PortfolioRecord.user_id == user_id,
+                PortfolioPositionHistoryRecord.recorded_at > start_at,
+                PortfolioPositionHistoryRecord.recorded_at <= end_at,
+            )
+            .order_by(
+                PortfolioPositionHistoryRecord.recorded_at,
+                PortfolioPositionHistoryRecord.sequence_id,
+            ),
+        )
+
+        records = [
+            *baseline_result.scalars().all(),
+            *changes_result.scalars().all(),
+        ]
+
+        records.sort(
+            key=lambda record: (
+                record.recorded_at,
+                record.sequence_id,
+            ),
+        )
+
+        return tuple(records)
 
     async def delete_for_user(
         self,
