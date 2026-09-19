@@ -9,6 +9,9 @@ from app.core.config import get_settings
 from app.events.api import router as events_router
 from app.market_impact.api import router as market_impact_router
 from app.news.api import router as news_router
+from app.portfolio.allocation_ranges_api import (
+    router as portfolio_allocation_ranges_router,
+)
 from app.portfolio.api import router as portfolio_router
 from app.portfolio.event_sensitivity_api import (
     router as portfolio_event_sensitivity_router,
@@ -51,6 +54,7 @@ app.include_router(market_impact_router)
 app.include_router(signals_router)
 app.include_router(recommendations_router)
 app.include_router(watchlists_router)
+app.include_router(portfolio_allocation_ranges_router)
 app.include_router(portfolio_router)
 app.include_router(portfolio_event_sensitivity_router)
 app.include_router(portfolio_reference_position_sizing_router)
