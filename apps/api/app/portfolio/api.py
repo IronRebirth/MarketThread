@@ -17,6 +17,7 @@ from app.portfolio.application import (
     PortfolioNotFound,
     PortfolioPositionNotFound,
 )
+from app.portfolio.cash_flow_api import router as cash_flow_router
 from app.portfolio.exposure import PortfolioExposureService
 from app.portfolio.exposure_schemas import (
     PortfolioAssetClassExposureResponse,
@@ -630,3 +631,6 @@ async def delete_portfolio(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Portfolio not found.",
         ) from None
+
+
+router.include_router(cash_flow_router)
