@@ -15,7 +15,6 @@ from .event_sensitivity_schemas import (
 )
 from .schemas import PortfolioPositionResponse, PortfolioResponse
 
-
 router = APIRouter(
     prefix="/portfolios",
     tags=["portfolios"],

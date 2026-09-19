@@ -5,8 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.company_impact.models import CompanyImpactDirection, ImpactType
 from app.events.types import EventCatalyst, EventType
-from app.news.intelligence.models import ImpactDirection, MarketRelevance
 from app.market_impact.models import ImpactFactor, TimeHorizon
+from app.news.intelligence.models import ImpactDirection, MarketRelevance
 from app.portfolio.schemas import PortfolioPositionResponse, PortfolioResponse
 
 from .event_sensitivity_models import EventSensitivityQuality

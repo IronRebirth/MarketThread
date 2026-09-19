@@ -1,14 +1,12 @@
 from datetime import datetime
-from uuid import UUID
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.company_impact.models import CompanyImpactDirection, ImpactType
-from app.events.models import MarketEvent
 from app.market_impact.models import ImpactFactor, TimeHorizon
 from app.portfolio.models import Portfolio, PortfolioPosition
-
 
 EventSensitivityQuality = Literal[
     "sufficient",
