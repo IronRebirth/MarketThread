@@ -101,7 +101,7 @@ async def get_portfolio_performance(
         ),
     ] = 365,
 ) -> PortfolioPerformanceResponse:
-    """Return historical performance for current portfolio holdings."""
+    """Return time-aware historical performance from position history."""
 
     service = PortfolioPerformanceService(
         persistence=PortfolioPersistenceService(session),

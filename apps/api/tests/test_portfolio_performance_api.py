@@ -4,12 +4,14 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.db.models.instrument import Instrument
 from app.db.models.market_bar import MarketBar
 from app.db.models.portfolio import PortfolioPositionRecord, PortfolioRecord
+from app.db.models.portfolio_history import PortfolioPositionHistoryRecord
 from app.db.models.user import User
 
 TEST_PASSWORD = "StrongPassword123"
@@ -49,7 +51,7 @@ async def create_authenticated_user(
 
 
 async def create_instrument(
-    db_session,
+    db_session: AsyncSession,
     *,
     currency: str = "USD",
 ) -> Instrument:
@@ -87,7 +89,7 @@ async def create_portfolio(
 
 
 async def create_bar(
-    db_session,
+    db_session: AsyncSession,
     *,
     instrument_id,
     timestamp: datetime,
@@ -109,8 +111,35 @@ async def create_bar(
     await db_session.commit()
 
 
+async def backdate_latest_position_history(
+    db_session: AsyncSession,
+    *,
+    portfolio_id,
+    instrument_id,
+    recorded_at: datetime,
+) -> None:
+    result = await db_session.execute(
+        select(PortfolioPositionHistoryRecord)
+        .where(
+            PortfolioPositionHistoryRecord.portfolio_id == portfolio_id,
+            PortfolioPositionHistoryRecord.instrument_id == instrument_id,
+        )
+        .order_by(
+            PortfolioPositionHistoryRecord.sequence_id.desc(),
+        )
+        .limit(1),
+    )
+
+    history = result.scalar_one()
+
+    history.recorded_at = recorded_at
+
+    await db_session.commit()
+    await db_session.refresh(history)
+
+
 async def cleanup_portfolio_test(
-    db_session,
+    db_session: AsyncSession,
     *,
     portfolio_id,
     instrument_ids,
@@ -141,7 +170,7 @@ async def cleanup_portfolio_test(
 @pytest.mark.asyncio
 async def test_performance_endpoint_returns_historical_values_and_return(
     client: AsyncClient,
-    db_session,
+    db_session: AsyncSession,
 ) -> None:
     _user, token = await create_authenticated_user(client)
 
@@ -167,6 +196,13 @@ async def test_performance_endpoint_returns_historical_values_and_return(
     assert position_response.status_code == 200
 
     assessed_at = datetime.now(UTC)
+
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=instrument.id,
+        recorded_at=assessed_at - timedelta(days=4),
+    )
 
     await create_bar(
         db_session,
@@ -202,7 +238,7 @@ async def test_performance_endpoint_returns_historical_values_and_return(
     assert body["position_count"] == 1
     assert body["lookback_days"] == 10
     assert body["methodology"].startswith(
-        "Constant-position historical proxy",
+        "Time-aware historical portfolio values",
     )
 
     assert len(body["currencies"]) == 1
@@ -237,7 +273,7 @@ async def test_performance_endpoint_returns_historical_values_and_return(
 @pytest.mark.asyncio
 async def test_performance_endpoint_keeps_currencies_separate(
     client: AsyncClient,
-    db_session,
+    db_session: AsyncSession,
 ) -> None:
     _user, token = await create_authenticated_user(client)
 
@@ -280,6 +316,20 @@ async def test_performance_endpoint_keeps_currencies_separate(
     assert eur_position_response.status_code == 200
 
     assessed_at = datetime.now(UTC)
+    historical_recorded_at = assessed_at - timedelta(days=3)
+
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=usd_instrument.id,
+        recorded_at=historical_recorded_at,
+    )
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=eur_instrument.id,
+        recorded_at=historical_recorded_at,
+    )
 
     for instrument_id, prices in (
         (
@@ -336,7 +386,7 @@ async def test_performance_endpoint_keeps_currencies_separate(
 @pytest.mark.asyncio
 async def test_performance_endpoint_reports_insufficient_history(
     client: AsyncClient,
-    db_session,
+    db_session: AsyncSession,
 ) -> None:
     _user, token = await create_authenticated_user(client)
 
@@ -362,6 +412,13 @@ async def test_performance_endpoint_reports_insufficient_history(
     assert position_response.status_code == 200
 
     assessed_at = datetime.now(UTC)
+
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=instrument.id,
+        recorded_at=assessed_at - timedelta(days=2),
+    )
 
     await create_bar(
         db_session,
@@ -397,7 +454,7 @@ async def test_performance_endpoint_reports_insufficient_history(
 @pytest.mark.asyncio
 async def test_performance_endpoint_reports_unavailable_without_common_history(
     client: AsyncClient,
-    db_session,
+    db_session: AsyncSession,
 ) -> None:
     _user, token = await create_authenticated_user(client)
 
@@ -433,6 +490,19 @@ async def test_performance_endpoint_reports_unavailable_without_common_history(
     assert second_position_response.status_code == 200
 
     assessed_at = datetime.now(UTC)
+
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=first_instrument.id,
+        recorded_at=assessed_at - timedelta(days=4),
+    )
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=second_instrument.id,
+        recorded_at=assessed_at - timedelta(days=4),
+    )
 
     await create_bar(
         db_session,
@@ -477,7 +547,7 @@ async def test_performance_endpoint_reports_unavailable_without_common_history(
 @pytest.mark.asyncio
 async def test_performance_endpoint_is_not_accessible_across_users(
     client: AsyncClient,
-    db_session,
+    db_session: AsyncSession,
 ) -> None:
     _owner, owner_token = await create_authenticated_user(client)
     _other_user, other_token = await create_authenticated_user(client)

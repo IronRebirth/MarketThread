@@ -1,6 +1,5 @@
-from collections import defaultdict
 from collections.abc import Sequence
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,7 +7,9 @@ from app.db.models.instrument import Instrument
 from app.market_data.models import Bar
 from app.market_data.providers.errors import MarketDataProviderError
 from app.market_data.service import MarketDataService
-from app.portfolio.models import Portfolio, PortfolioPosition
+from app.portfolio.history import PortfolioHistoricalStateService
+from app.portfolio.history_models import PortfolioHistoricalPosition
+from app.portfolio.models import Portfolio
 from app.portfolio.performance_models import (
     PerformanceQuality,
     PortfolioCurrencyPerformance,
@@ -19,7 +20,7 @@ from app.portfolio.persistence import PortfolioPersistenceService
 
 
 class PortfolioPerformanceService:
-    """Build historical portfolio value and return series."""
+    """Build time-aware historical portfolio value and return series."""
 
     def __init__(
         self,
@@ -28,6 +29,9 @@ class PortfolioPerformanceService:
     ) -> None:
         self.persistence = persistence
         self.market_data = market_data
+        self.historical_state = PortfolioHistoricalStateService(
+            persistence,
+        )
 
     async def build(
         self,
@@ -37,7 +41,7 @@ class PortfolioPerformanceService:
         assessed_at: datetime | None = None,
         lookback_days: int = 365,
     ) -> PortfolioPerformance:
-        """Build currency-separated historical portfolio performance."""
+        """Build currency-separated historical performance from position history."""
 
         if lookback_days <= 0:
             raise ValueError("lookback_days must be greater than zero")
@@ -52,7 +56,7 @@ class PortfolioPerformanceService:
         assessment_time = assessment_time.astimezone(UTC)
         lookback_start = assessment_time - timedelta(days=lookback_days)
 
-        detail = await self.persistence.get_detail_for_user(
+        detail = await self.persistence.get_for_user(
             user_id,
             portfolio_id,
         )
@@ -60,48 +64,91 @@ class PortfolioPerformanceService:
         if detail is None:
             raise ValueError("Portfolio not found.")
 
-        portfolio_record, position_count, position_records = detail
+        portfolio_record, current_position_count = detail
 
         portfolio = Portfolio(
             portfolio_id=portfolio_record.id,
             name=portfolio_record.name,
             created_at=portfolio_record.created_at,
             updated_at=portfolio_record.updated_at,
-            position_count=position_count,
+            position_count=current_position_count,
         )
 
-        positions = await self._build_positions(position_records)
+        historical_instrument_ids = await self._list_historical_instrument_ids(
+            user_id=user_id,
+            portfolio_id=portfolio_id,
+            end_at=assessment_time,
+        )
 
-        if not positions:
+        if not historical_instrument_ids:
             return PortfolioPerformance(
                 portfolio=portfolio,
                 assessed_at=assessment_time,
                 lookback_start=lookback_start,
                 lookback_end=assessment_time,
                 lookback_days=lookback_days,
-                position_count=0,
+                position_count=current_position_count,
                 quality="empty",
                 methodology=self._methodology(),
                 currencies=(),
             )
 
-        grouped_positions: dict[str, list[PortfolioPosition]] = defaultdict(list)
+        instruments = await self._build_instruments(
+            historical_instrument_ids,
+        )
 
-        for position in positions:
-            grouped_positions[position.currency].append(position)
+        position_histories = await self._load_market_histories(
+            historical_instrument_ids=historical_instrument_ids,
+            start_at=lookback_start,
+            end_at=assessment_time,
+        )
 
-        currencies: list[PortfolioCurrencyPerformance] = []
+        candidate_days = self._candidate_days(
+            position_histories,
+        )
 
-        for currency in sorted(grouped_positions):
-            currency_performance = await self._build_currency_performance(
+        if not candidate_days:
+            return self._unavailable_result(
+                portfolio=portfolio,
+                assessment_time=assessment_time,
+                lookback_start=lookback_start,
+                lookback_days=lookback_days,
+                position_histories=position_histories,
+                instruments=instruments,
+            )
+
+        observation_times = tuple(
+            self._utc_day_end(observed_on) for observed_on in candidate_days
+        )
+
+        historical_states = await self.historical_state.build_many(
+            user_id,
+            portfolio_id,
+            as_ofs=observation_times,
+        )
+
+        state_by_day = {state.as_of.date(): state for state in historical_states}
+
+        currencies = self._historical_currencies(
+            historical_states,
+        )
+
+        currency_results: list[PortfolioCurrencyPerformance] = []
+
+        for currency in sorted(currencies):
+            result = self._build_currency_performance(
                 currency=currency,
-                positions=tuple(grouped_positions[currency]),
+                historical_states=historical_states,
+                state_by_day=state_by_day,
+                position_histories=position_histories,
+                instruments=instruments,
+                candidate_days=candidate_days,
                 start_at=lookback_start,
                 end_at=assessment_time,
             )
-            currencies.append(currency_performance)
+            currency_results.append(result)
 
-        currency_results = tuple(currencies)
+        currency_results_tuple = tuple(currency_results)
 
         return PortfolioPerformance(
             portfolio=portfolio,
@@ -109,134 +156,263 @@ class PortfolioPerformanceService:
             lookback_start=lookback_start,
             lookback_end=assessment_time,
             lookback_days=lookback_days,
-            position_count=position_count,
-            quality=self._aggregate_quality(currency_results),
+            position_count=current_position_count,
+            quality=self._aggregate_quality(
+                currency_results_tuple,
+            ),
             methodology=self._methodology(),
-            currencies=currency_results,
+            currencies=currency_results_tuple,
         )
 
-    async def _build_positions(
+    async def _list_historical_instrument_ids(
         self,
-        position_records,
-    ) -> tuple[PortfolioPosition, ...]:
-        """Resolve canonical instrument metadata for persisted positions."""
+        *,
+        user_id: UUID,
+        portfolio_id: UUID,
+        end_at: datetime,
+    ) -> tuple[UUID, ...]:
+        result = await self.persistence.session.execute(
+            self._historical_instrument_ids_statement(
+                user_id=user_id,
+                portfolio_id=portfolio_id,
+                end_at=end_at,
+            ),
+        )
 
-        positions: list[PortfolioPosition] = []
+        return tuple(result.scalars().all())
 
-        for position_record in position_records:
+    @staticmethod
+    def _historical_instrument_ids_statement(
+        *,
+        user_id: UUID,
+        portfolio_id: UUID,
+        end_at: datetime,
+    ):
+        from sqlalchemy import distinct, select
+
+        from app.db.models.portfolio import PortfolioRecord
+        from app.db.models.portfolio_history import (
+            PortfolioPositionHistoryRecord,
+        )
+
+        return (
+            select(
+                distinct(
+                    PortfolioPositionHistoryRecord.instrument_id,
+                ),
+            )
+            .join(
+                PortfolioRecord,
+                PortfolioRecord.id == PortfolioPositionHistoryRecord.portfolio_id,
+            )
+            .where(
+                PortfolioPositionHistoryRecord.portfolio_id == portfolio_id,
+                PortfolioRecord.user_id == user_id,
+                PortfolioPositionHistoryRecord.recorded_at <= end_at,
+            )
+            .order_by(
+                PortfolioPositionHistoryRecord.instrument_id,
+            )
+        )
+
+    async def _build_instruments(
+        self,
+        instrument_ids: Sequence[UUID],
+    ) -> dict[UUID, Instrument]:
+        instruments: dict[UUID, Instrument] = {}
+
+        for instrument_id in instrument_ids:
             instrument = await self.persistence.session.get(
                 Instrument,
-                position_record.instrument_id,
+                instrument_id,
             )
 
             if instrument is None:
                 raise RuntimeError(
-                    "Portfolio position references a missing instrument.",
+                    "Historical portfolio position references a missing instrument.",
                 )
 
-            positions.append(
-                PortfolioPosition(
-                    position_id=position_record.id,
-                    portfolio_id=position_record.portfolio_id,
-                    instrument_id=position_record.instrument_id,
-                    quantity=position_record.quantity,
-                    average_cost=position_record.average_cost,
-                    created_at=position_record.created_at,
-                    updated_at=position_record.updated_at,
-                    symbol=instrument.symbol,
-                    name=instrument.name,
-                    exchange=instrument.exchange,
-                    asset_class=instrument.asset_class,
-                    currency=instrument.currency,
-                    is_active=instrument.is_active,
-                ),
-            )
+            instruments[instrument_id] = instrument
 
-        return tuple(positions)
+        return instruments
 
-    async def _build_currency_performance(
+    async def _load_market_histories(
         self,
         *,
-        currency: str,
-        positions: tuple[PortfolioPosition, ...],
+        historical_instrument_ids: Sequence[UUID],
         start_at: datetime,
         end_at: datetime,
-    ) -> PortfolioCurrencyPerformance:
-        """Build a historical value series from common observation dates."""
-
-        position_histories: list[
+    ) -> dict[
+        UUID,
+        tuple[
+            dict[date, tuple[datetime, Decimal]],
+            set[str],
+        ],
+    ]:
+        histories: dict[
+            UUID,
             tuple[
-                PortfolioPosition,
                 dict[date, tuple[datetime, Decimal]],
                 set[str],
-            ]
-        ] = []
+            ],
+        ] = {}
 
-        unavailable_symbols: list[str] = []
-
-        for position in positions:
+        for instrument_id in historical_instrument_ids:
             try:
                 bars = await self.market_data.get_historical_bars(
-                    position.instrument_id,
+                    instrument_id,
                     start_at,
                     end_at,
                 )
             except MarketDataProviderError:
                 bars = ()
 
-            daily_bars, sources = self._select_daily_closes(bars)
-
-            if not daily_bars:
-                unavailable_symbols.append(position.symbol)
-
-            position_histories.append(
-                (
-                    position,
-                    daily_bars,
-                    sources,
-                ),
+            histories[instrument_id] = self._select_daily_closes(
+                bars,
             )
 
-        common_days: set[date] | None = None
+        return histories
 
-        for _position, daily_bars, _sources in position_histories:
-            observed_days = set(daily_bars)
+    @staticmethod
+    def _candidate_days(
+        position_histories: dict[
+            UUID,
+            tuple[
+                dict[date, tuple[datetime, Decimal]],
+                set[str],
+            ],
+        ],
+    ) -> tuple[date, ...]:
+        observed_days: set[date] = set()
 
-            if common_days is None:
-                common_days = observed_days
-            else:
-                common_days &= observed_days
+        for daily_bars, _sources in position_histories.values():
+            observed_days.update(daily_bars)
 
-        complete_days = sorted(common_days or [])
+        return tuple(sorted(observed_days))
+
+    @staticmethod
+    def _historical_currencies(
+        historical_states,
+    ) -> set[str]:
+        currencies: set[str] = set()
+
+        for state in historical_states:
+            for position in state.positions:
+                currencies.add(position.currency)
+
+        return currencies
+
+    def _build_currency_performance(
+        self,
+        *,
+        currency: str,
+        historical_states,
+        state_by_day,
+        position_histories: dict[
+            UUID,
+            tuple[
+                dict[date, tuple[datetime, Decimal]],
+                set[str],
+            ],
+        ],
+        instruments: dict[UUID, Instrument],
+        candidate_days: Sequence[date],
+        start_at: datetime,
+        end_at: datetime,
+    ) -> PortfolioCurrencyPerformance:
+        historical_instrument_ids = {
+            position.instrument_id
+            for state in historical_states
+            for position in state.positions
+            if position.currency == currency
+        }
+
+        active_days = 0
+        complete_active_days = 0
+        missing_symbols: set[str] = set()
+
+        points: list[PortfolioPerformancePoint] = []
+
+        for observed_day in candidate_days:
+            state = state_by_day[observed_day]
+
+            active_positions = tuple(
+                position
+                for position in state.positions
+                if position.currency == currency
+            )
+
+            if not active_positions:
+                if historical_instrument_ids:
+                    points.append(
+                        PortfolioPerformancePoint(
+                            observed_on=observed_day,
+                            value=Decimal("0"),
+                        ),
+                    )
+                continue
+
+            active_days += 1
+
+            missing_position = False
+
+            for position in active_positions:
+                daily_bars, _sources = position_histories[position.instrument_id]
+
+                if observed_day not in daily_bars:
+                    missing_symbols.add(
+                        position.symbol,
+                    )
+                    missing_position = True
+
+            if missing_position:
+                continue
+
+            complete_active_days += 1
+
+            portfolio_value = Decimal("0")
+
+            for position in active_positions:
+                daily_bars, _sources = position_histories[position.instrument_id]
+                _, close = daily_bars[observed_day]
+
+                portfolio_value += position.quantity * close
+
+            points.append(
+                PortfolioPerformancePoint(
+                    observed_on=observed_day,
+                    value=portfolio_value,
+                ),
+            )
 
         sources = tuple(
             sorted(
                 {
                     source
-                    for _position, _daily_bars, position_sources in position_histories
-                    for source in position_sources
+                    for instrument_id in historical_instrument_ids
+                    for source in position_histories[instrument_id][1]
                 },
-            )
+            ),
         )
 
-        if not complete_days:
+        if not points:
             notes = [
                 (
-                    "No dates have complete historical close coverage for every "
-                    "position in this currency."
+                    "No historical portfolio state had a corresponding "
+                    "market-data observation."
                 ),
             ]
 
-            if unavailable_symbols:
+            if missing_symbols:
                 notes.append(
                     "Historical bars were unavailable for: "
-                    + ", ".join(sorted(unavailable_symbols))
+                    + ", ".join(sorted(missing_symbols))
                     + ".",
                 )
 
             return PortfolioCurrencyPerformance(
                 currency=currency,
-                position_count=len(positions),
+                position_count=len(historical_instrument_ids),
                 quality="unavailable",
                 first_observed_on=None,
                 last_observed_on=None,
@@ -250,58 +426,98 @@ class PortfolioPerformanceService:
                 notes=tuple(notes),
             )
 
-        points: list[PortfolioPerformancePoint] = []
-
-        for observed_day in complete_days:
-            portfolio_value = Decimal("0")
-
-            for position, daily_bars, _sources in position_histories:
-                _, close = daily_bars[observed_day]
-                portfolio_value += position.quantity * close
-
-            points.append(
-                PortfolioPerformancePoint(
-                    observed_on=observed_day,
-                    value=portfolio_value,
-                ),
-            )
-
         initial_value = points[0].value
         latest_value = points[-1].value
 
+        first_observed_on = points[0].observed_on
+        last_observed_on = points[-1].observed_on
+
         period_return: Decimal | None = None
 
-        if initial_value > 0 and len(points) >= 2:
-            period_return = (latest_value / initial_value) - Decimal("1")
+        state_changed_after_first_observation = (
+            self._has_position_change_after_first_observation(
+                currency=currency,
+                first_observed_on=first_observed_on,
+                last_observed_on=last_observed_on,
+                historical_states=historical_states,
+            )
+        )
 
         notes = [
-            "Current quantities are held constant across the lookback window.",
+            (
+                "Historical holdings are reconstructed from position history "
+                "at each UTC day-end."
+            ),
+            "Position changes are reflected directly in the historical value series.",
             "No synthetic prices are created for missing historical observations.",
             (
                 "Portfolio values are calculated separately for each currency; "
                 "no FX conversion is performed."
             ),
-            (
-                "Only dates with historical closes for every position in the "
-                "currency are included."
-            ),
         ]
+
+        if missing_symbols:
+            notes.append(
+                "Historical bars were unavailable for: "
+                + ", ".join(sorted(missing_symbols))
+                + ".",
+            )
+
+        if complete_active_days < active_days:
+            notes.append(
+                (
+                    "Only dates with historical closes for every active position "
+                    "in the currency were included."
+                ),
+            )
+
+        if initial_value > 0 and len(points) >= 2:
+            if state_changed_after_first_observation:
+                notes.append(
+                    (
+                        "Simple period return is withheld because holdings changed "
+                        "after the first complete observation. Position history "
+                        "does not record the external cash flows required for a "
+                        "comparable return calculation."
+                    ),
+                )
+            else:
+                period_return = (latest_value / initial_value) - Decimal("1")
 
         if len(points) < 2:
             quality: PerformanceQuality = "insufficient"
             notes.append(
                 "At least two complete observations are required to calculate "
-                "period return."
+                "period return.",
             )
+        elif state_changed_after_first_observation or initial_value <= 0:
+            quality = "insufficient"
+
+            if initial_value <= 0:
+                notes.append(
+                    (
+                        "Period return is unavailable because the first observed "
+                        "portfolio value is zero."
+                    ),
+                )
         else:
             quality = "sufficient"
 
+        if complete_active_days == 0 and active_days > 0:
+            quality = "unavailable"
+            notes.append(
+                (
+                    "No active holding date has complete historical close coverage "
+                    "for every position in the currency."
+                ),
+            )
+
         return PortfolioCurrencyPerformance(
             currency=currency,
-            position_count=len(positions),
+            position_count=len(historical_instrument_ids),
             quality=quality,
-            first_observed_on=complete_days[0],
-            last_observed_on=complete_days[-1],
+            first_observed_on=first_observed_on,
+            last_observed_on=last_observed_on,
             observation_count=len(points),
             return_count=max(len(points) - 1, 0),
             initial_value=initial_value,
@@ -313,13 +529,115 @@ class PortfolioPerformanceService:
         )
 
     @staticmethod
+    def _has_position_change_after_first_observation(
+        *,
+        currency: str,
+        first_observed_on: date,
+        last_observed_on: date,
+        historical_states,
+    ) -> bool:
+        first_day_end = PortfolioPerformanceService._utc_day_end(
+            first_observed_on,
+        )
+        last_day_end = PortfolioPerformanceService._utc_day_end(
+            last_observed_on,
+        )
+
+        previous_positions: dict[UUID, PortfolioHistoricalPosition] = {}
+        first_state = None
+        last_state = None
+
+        for state in historical_states:
+            if state.as_of.date() == first_observed_on:
+                first_state = state
+            if state.as_of.date() == last_observed_on:
+                last_state = state
+
+        if first_state is None or last_state is None:
+            return False
+
+        for position in first_state.positions:
+            if position.currency == currency:
+                previous_positions[position.instrument_id] = position
+
+        for state in historical_states:
+            if state.as_of <= first_day_end:
+                continue
+
+            if state.as_of > last_day_end:
+                break
+
+            current_positions = {
+                position.instrument_id: position
+                for position in state.positions
+                if position.currency == currency
+            }
+
+            if current_positions != previous_positions:
+                return True
+
+            previous_positions = current_positions
+
+        return False
+
+    @staticmethod
+    def _unavailable_result(
+        *,
+        portfolio: Portfolio,
+        assessment_time: datetime,
+        lookback_start: datetime,
+        lookback_days: int,
+        position_histories,
+        instruments,
+    ) -> PortfolioPerformance:
+        notes = (
+            "No historical market-data observations are available "
+            "for instruments in the portfolio history.",
+        )
+
+        currencies = tuple(
+            PortfolioCurrencyPerformance(
+                currency=currency,
+                position_count=1,
+                quality="unavailable",
+                first_observed_on=None,
+                last_observed_on=None,
+                observation_count=0,
+                return_count=0,
+                initial_value=None,
+                latest_value=None,
+                period_return=None,
+                points=(),
+                sources=(),
+                notes=notes,
+            )
+            for currency in sorted(
+                {instrument.currency for instrument in instruments.values()},
+            )
+        )
+
+        quality: PerformanceQuality = "unavailable" if currencies else "empty"
+
+        return PortfolioPerformance(
+            portfolio=portfolio,
+            assessed_at=assessment_time,
+            lookback_start=lookback_start,
+            lookback_end=assessment_time,
+            lookback_days=lookback_days,
+            position_count=portfolio.position_count,
+            quality=quality,
+            methodology=PortfolioPerformanceService._methodology(),
+            currencies=currencies,
+        )
+
+    @staticmethod
     def _select_daily_closes(
         bars: Sequence[Bar],
     ) -> tuple[
         dict[date, tuple[datetime, Decimal]],
         set[str],
     ]:
-        """Reduce historical bars to the final close on each UTC date."""
+        """Reduce historical bars to the final close observed on each UTC date."""
 
         daily_bars: dict[date, tuple[datetime, Decimal]] = {}
         sources: set[str] = set()
@@ -339,6 +657,14 @@ class PortfolioPerformanceService:
             sources.add(bar.source)
 
         return daily_bars, sources
+
+    @staticmethod
+    def _utc_day_end(observed_on: date) -> datetime:
+        return datetime.combine(
+            observed_on,
+            time.max,
+            tzinfo=UTC,
+        )
 
     @staticmethod
     def _aggregate_quality(
@@ -369,10 +695,14 @@ class PortfolioPerformanceService:
 
     @staticmethod
     def _methodology() -> str:
-        """Describe the historical portfolio-performance methodology."""
+        """Describe the time-aware historical portfolio-performance methodology."""
 
         return (
-            "Constant-position historical proxy using current persisted quantities, "
-            "daily closing prices, and simple period return between the first and "
-            "latest complete observations."
+            "Time-aware historical portfolio values reconstructed from append-only "
+            "position history at UTC day-end, paired with daily closing prices and "
+            "calculated separately by currency. Position changes are reflected in "
+            "the value series. Simple period return is reported only when holdings "
+            "remain unchanged after the first complete observation; otherwise it "
+            "is withheld because position history does not provide the external "
+            "cash-flow amounts required for a comparable return calculation."
         )
