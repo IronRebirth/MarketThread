@@ -1,0 +1,120 @@
+from datetime import datetime
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.auth import CurrentUser
+from app.db.session import get_db_session
+from app.watchlists.alerts import WatchlistAlertService
+from app.watchlists.alerts_schemas import (
+    WatchlistAlertResponse,
+    WatchlistAlertsResponse,
+)
+
+router = APIRouter(
+    prefix="/watchlists",
+    tags=["watchlist alerts"],
+)
+
+DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
+
+
+def _to_response(
+    analysis,
+) -> WatchlistAlertsResponse:
+    """Convert alert-domain data into an API response."""
+
+    alerts = tuple(
+        WatchlistAlertResponse(
+            alert_id=alert.alert_id,
+            watchlist_id=alert.watchlist_id,
+            watchlist_item_id=alert.watchlist_item_id,
+            instrument_id=alert.instrument_id,
+            symbol=alert.symbol,
+            company_name=alert.company_name,
+            ticker=alert.ticker,
+            market_impact_id=alert.market_impact_id,
+            company_impact_id=alert.company_impact_id,
+            event_id=alert.event_id,
+            event_type=alert.event_type,
+            title=alert.title,
+            summary=alert.summary,
+            catalyst=alert.catalyst,
+            market_relevance=alert.market_relevance,
+            event_impact_direction=alert.event_impact_direction,
+            impact_type=alert.impact_type,
+            direction=alert.direction,
+            factor=alert.factor,
+            time_horizon=alert.time_horizon,
+            confidence=alert.confidence,
+            event_confidence=alert.event_confidence,
+            watchlist_item_added_at=alert.watchlist_item_added_at,
+            first_seen_at=alert.first_seen_at,
+            last_seen_at=alert.last_seen_at,
+            source_article_ids=alert.source_article_ids,
+            rationale=alert.rationale,
+            explanation=alert.explanation,
+        )
+        for alert in analysis.alerts
+    )
+
+    return WatchlistAlertsResponse(
+        watchlist_id=analysis.watchlist_id,
+        assessed_at=analysis.assessed_at,
+        item_count=analysis.item_count,
+        matched_item_count=analysis.matched_item_count,
+        unmatched_item_count=analysis.unmatched_item_count,
+        alert_count=analysis.alert_count,
+        returned_alert_count=analysis.returned_alert_count,
+        quality=analysis.quality,
+        alerts=alerts,
+        methodology=analysis.methodology,
+        notes=analysis.notes,
+    )
+
+
+@router.get(
+    "/{watchlist_id}/alerts",
+    response_model=WatchlistAlertsResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_watchlist_alerts(
+    watchlist_id: UUID,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=100,
+            description="Maximum number of alerts returned.",
+        ),
+    ] = 100,
+    assessed_at: datetime | None = None,
+) -> WatchlistAlertsResponse:
+    """Return persisted intelligence alerts for a user's watchlist."""
+
+    service = WatchlistAlertService(session)
+
+    try:
+        analysis = await service.build(
+            user_id=current_user.id,
+            watchlist_id=watchlist_id,
+            assessed_at=assessed_at,
+            limit=limit,
+        )
+    except ValueError as exc:
+        if str(exc) == "Watchlist not found.":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Watchlist not found.",
+            ) from None
+
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return _to_response(analysis)
