@@ -224,7 +224,7 @@ export function PortfolioRiskMetricsPanel({
   return (
     <Card
       title="Historical risk metrics"
-      description="Review historical volatility and maximum drawdown using reconstructed historical position states. Currency buckets remain separate and no FX conversion is applied. Risk calculations reset across holding changes because external cash-flow amounts are not persisted."
+      description="Review historical volatility and maximum drawdown using reconstructed historical position states. Currency buckets remain separate and no FX conversion is applied. Recorded deposits and withdrawals are neutralized within unchanged holding-state intervals; holding-state changes remain separate because trade-level transaction data is not persisted."
     >
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-4 rounded-md border border-border bg-surface-subtle p-4 sm:flex-row sm:items-end sm:justify-between">
