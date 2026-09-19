@@ -7,6 +7,9 @@ from app.db.models.instrument import Instrument
 from app.market_data.models import Bar
 from app.market_data.providers.errors import MarketDataProviderError
 from app.market_data.service import MarketDataService
+from app.portfolio.cash_flow_persistence import (
+    PortfolioCashFlowPersistenceService,
+)
 from app.portfolio.history import PortfolioHistoricalStateService
 from app.portfolio.history_models import PortfolioHistoricalPosition
 from app.portfolio.models import Portfolio
@@ -26,9 +29,11 @@ class PortfolioPerformanceService:
         self,
         persistence: PortfolioPersistenceService,
         market_data: MarketDataService,
+        cash_flow_persistence: PortfolioCashFlowPersistenceService | None = None,
     ) -> None:
         self.persistence = persistence
         self.market_data = market_data
+        self.cash_flow_persistence = cash_flow_persistence
         self.historical_state = PortfolioHistoricalStateService(
             persistence,
         )
@@ -129,6 +134,13 @@ class PortfolioPerformanceService:
 
         state_by_day = {state.as_of.date(): state for state in historical_states}
 
+        cash_flows_by_currency = await self._load_cash_flows(
+            user_id=user_id,
+            portfolio_id=portfolio_id,
+            start_at=lookback_start,
+            end_at=assessment_time,
+        )
+
         currencies = self._historical_currencies(
             historical_states,
         )
@@ -145,6 +157,7 @@ class PortfolioPerformanceService:
                 candidate_days=candidate_days,
                 start_at=lookback_start,
                 end_at=assessment_time,
+                cash_flows=cash_flows_by_currency.get(currency, ()),
             )
             currency_results.append(result)
 
@@ -163,6 +176,34 @@ class PortfolioPerformanceService:
             methodology=self._methodology(),
             currencies=currency_results_tuple,
         )
+
+    async def _load_cash_flows(
+        self,
+        *,
+        user_id: UUID,
+        portfolio_id: UUID,
+        start_at: datetime,
+        end_at: datetime,
+    ) -> dict[str, tuple]:
+        """Load external cash flows for the performance window."""
+
+        if self.cash_flow_persistence is None:
+            return {}
+
+        records = await self.cash_flow_persistence.list_for_user(
+            user_id,
+            portfolio_id,
+            start_at=start_at,
+            end_at=end_at,
+            limit=None,
+        )
+
+        grouped: dict[str, list] = {}
+
+        for record in records:
+            grouped.setdefault(record.currency, []).append(record)
+
+        return {currency: tuple(events) for currency, events in grouped.items()}
 
     async def _list_historical_instrument_ids(
         self,
@@ -319,6 +360,7 @@ class PortfolioPerformanceService:
         candidate_days: Sequence[date],
         start_at: datetime,
         end_at: datetime,
+        cash_flows: Sequence,
     ) -> PortfolioCurrencyPerformance:
         historical_instrument_ids = {
             position.instrument_id
@@ -421,6 +463,9 @@ class PortfolioPerformanceService:
                 initial_value=None,
                 latest_value=None,
                 period_return=None,
+                external_cash_flow_adjusted_period_return=None,
+                external_cash_flow_count=0,
+                external_net_cash_flow=Decimal("0"),
                 points=(),
                 sources=sources,
                 notes=tuple(notes),
@@ -441,6 +486,18 @@ class PortfolioPerformanceService:
                 last_observed_on=last_observed_on,
                 historical_states=historical_states,
             )
+        )
+
+        qualifying_cash_flows = self._qualifying_cash_flows(
+            currency=currency,
+            first_observed_on=first_observed_on,
+            last_observed_on=last_observed_on,
+            cash_flows=cash_flows,
+        )
+
+        external_cash_flow_count = len(qualifying_cash_flows)
+        external_net_cash_flow = self._net_external_cash_flow(
+            qualifying_cash_flows,
         )
 
         notes = [
@@ -476,13 +533,58 @@ class PortfolioPerformanceService:
                 notes.append(
                     (
                         "Simple period return is withheld because holdings changed "
-                        "after the first complete observation. Position history "
-                        "does not record the external cash flows required for a "
-                        "comparable return calculation."
+                        "after the first complete observation."
                     ),
                 )
             else:
                 period_return = (latest_value / initial_value) - Decimal("1")
+
+        external_cash_flow_adjusted_period_return = (
+            self._build_external_cash_flow_adjusted_return(
+                initial_value=initial_value,
+                latest_value=latest_value,
+                point_count=len(points),
+                state_changed_after_first_observation=(
+                    state_changed_after_first_observation
+                ),
+                period_return=period_return,
+                external_net_cash_flow=external_net_cash_flow,
+                external_cash_flow_count=external_cash_flow_count,
+            )
+        )
+
+        if external_cash_flow_count:
+            notes.append(
+                (
+                    f"{external_cash_flow_count} recorded external cash-flow event(s) "
+                    "fell after the first complete observation and on or before "
+                    "the last complete observation."
+                ),
+            )
+
+        if state_changed_after_first_observation and external_cash_flow_count:
+            notes.append(
+                (
+                    "External cash-flow-adjusted return is a proxy that assumes "
+                    "the net recorded external flow explains the corresponding "
+                    "change in invested portfolio value. Trade-level purchases, "
+                    "sales, dividends, and internal cash movements are not modeled."
+                ),
+            )
+        elif not state_changed_after_first_observation and external_cash_flow_count:
+            notes.append(
+                (
+                    "External cash flows did not coincide with a recorded holding "
+                    "change, so the invested-value period return remains unchanged."
+                ),
+            )
+        elif state_changed_after_first_observation:
+            notes.append(
+                (
+                    "No qualifying external cash flow was available to provide a "
+                    "cash-flow adjustment for the holding change."
+                ),
+            )
 
         if len(points) < 2:
             quality: PerformanceQuality = "insufficient"
@@ -523,9 +625,99 @@ class PortfolioPerformanceService:
             initial_value=initial_value,
             latest_value=latest_value,
             period_return=period_return,
+            external_cash_flow_adjusted_period_return=(
+                external_cash_flow_adjusted_period_return
+            ),
+            external_cash_flow_count=external_cash_flow_count,
+            external_net_cash_flow=external_net_cash_flow,
             points=tuple(points),
             sources=sources,
             notes=tuple(notes),
+        )
+
+    @staticmethod
+    def _qualifying_cash_flows(
+        *,
+        currency: str,
+        first_observed_on: date,
+        last_observed_on: date,
+        cash_flows: Sequence,
+    ) -> tuple:
+        first_day_end = PortfolioPerformanceService._utc_day_end(
+            first_observed_on,
+        )
+        last_day_end = PortfolioPerformanceService._utc_day_end(
+            last_observed_on,
+        )
+
+        qualifying = []
+
+        for cash_flow in cash_flows:
+            if cash_flow.currency != currency:
+                continue
+
+            effective_at = cash_flow.effective_at.astimezone(UTC)
+
+            if first_day_end < effective_at <= last_day_end:
+                qualifying.append(cash_flow)
+
+        return tuple(qualifying)
+
+    @staticmethod
+    def _net_external_cash_flow(
+        cash_flows: Sequence,
+    ) -> Decimal:
+        net_flow = Decimal("0")
+
+        for cash_flow in cash_flows:
+            if cash_flow.event_type == "deposit":
+                net_flow += cash_flow.amount
+            elif cash_flow.event_type == "withdrawal":
+                net_flow -= cash_flow.amount
+            else:
+                raise RuntimeError(
+                    "Historical portfolio cash-flow history contains an invalid "
+                    "event type.",
+                )
+
+        return net_flow
+
+    @staticmethod
+    def _build_external_cash_flow_adjusted_return(
+        *,
+        initial_value: Decimal,
+        latest_value: Decimal,
+        point_count: int,
+        state_changed_after_first_observation: bool,
+        period_return: Decimal | None,
+        external_net_cash_flow: Decimal,
+        external_cash_flow_count: int,
+    ) -> Decimal | None:
+        if initial_value <= 0 or point_count < 2:
+            return None
+
+        if not state_changed_after_first_observation:
+            return period_return
+
+        if external_cash_flow_count == 0:
+            return None
+
+        adjusted_latest_value = latest_value - external_net_cash_flow
+
+        if adjusted_latest_value < 0:
+            return None
+
+        return (adjusted_latest_value / initial_value) - Decimal("1")
+
+    @staticmethod
+    def _position_signature(
+        position: PortfolioHistoricalPosition,
+    ) -> tuple[Decimal, Decimal]:
+        """Return economically relevant holding state for change detection."""
+
+        return (
+            position.quantity,
+            position.average_cost,
         )
 
     @staticmethod
@@ -543,22 +735,25 @@ class PortfolioPerformanceService:
             last_observed_on,
         )
 
-        previous_positions: dict[UUID, PortfolioHistoricalPosition] = {}
-        first_state = None
-        last_state = None
+        first_state = next(
+            (
+                state
+                for state in historical_states
+                if state.as_of.date() == first_observed_on
+            ),
+            None,
+        )
 
-        for state in historical_states:
-            if state.as_of.date() == first_observed_on:
-                first_state = state
-            if state.as_of.date() == last_observed_on:
-                last_state = state
-
-        if first_state is None or last_state is None:
+        if first_state is None:
             return False
 
-        for position in first_state.positions:
-            if position.currency == currency:
-                previous_positions[position.instrument_id] = position
+        previous_positions = {
+            position.instrument_id: PortfolioPerformanceService._position_signature(
+                position,
+            )
+            for position in first_state.positions
+            if position.currency == currency
+        }
 
         for state in historical_states:
             if state.as_of <= first_day_end:
@@ -568,7 +763,9 @@ class PortfolioPerformanceService:
                 break
 
             current_positions = {
-                position.instrument_id: position
+                position.instrument_id: PortfolioPerformanceService._position_signature(
+                    position,
+                )
                 for position in state.positions
                 if position.currency == currency
             }
@@ -607,6 +804,9 @@ class PortfolioPerformanceService:
                 initial_value=None,
                 latest_value=None,
                 period_return=None,
+                external_cash_flow_adjusted_period_return=None,
+                external_cash_flow_count=0,
+                external_net_cash_flow=Decimal("0"),
                 points=(),
                 sources=(),
                 notes=notes,
@@ -701,8 +901,11 @@ class PortfolioPerformanceService:
             "Time-aware historical portfolio values reconstructed from append-only "
             "position history at UTC day-end, paired with daily closing prices and "
             "calculated separately by currency. Position changes are reflected in "
-            "the value series. Simple period return is reported only when holdings "
-            "remain unchanged after the first complete observation; otherwise it "
-            "is withheld because position history does not provide the external "
-            "cash-flow amounts required for a comparable return calculation."
+            "the value series. Simple period return remains available only when "
+            "holdings remain unchanged after the first complete observation. When "
+            "holdings change and recorded external cash flows exist in the same "
+            "period, an explicitly labeled external cash-flow-adjusted return "
+            "proxy is calculated from the net recorded flow. This proxy assumes "
+            "the external flow explains the corresponding change in invested value "
+            "and is not a substitute for a trade-level time-weighted return."
         )

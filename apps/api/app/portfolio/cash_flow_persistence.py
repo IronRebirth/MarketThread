@@ -58,7 +58,7 @@ class PortfolioCashFlowPersistenceService:
         *,
         start_at: datetime | None = None,
         end_at: datetime | None = None,
-        limit: int = 200,
+        limit: int | None = 200,
     ) -> Sequence[PortfolioCashFlowRecord]:
         """Return immutable cash-flow events for a user-owned portfolio."""
 
@@ -72,16 +72,8 @@ class PortfolioCashFlowPersistenceService:
         if portfolio_exists is None:
             raise ValueError("Portfolio not found.")
 
-        statement = (
-            select(PortfolioCashFlowRecord)
-            .where(
-                PortfolioCashFlowRecord.portfolio_id == portfolio_id,
-            )
-            .order_by(
-                PortfolioCashFlowRecord.effective_at,
-                PortfolioCashFlowRecord.sequence_id,
-            )
-            .limit(limit)
+        statement = select(PortfolioCashFlowRecord).where(
+            PortfolioCashFlowRecord.portfolio_id == portfolio_id,
         )
 
         if start_at is not None:
@@ -93,6 +85,14 @@ class PortfolioCashFlowPersistenceService:
             statement = statement.where(
                 PortfolioCashFlowRecord.effective_at <= end_at,
             )
+
+        statement = statement.order_by(
+            PortfolioCashFlowRecord.effective_at,
+            PortfolioCashFlowRecord.sequence_id,
+        )
+
+        if limit is not None:
+            statement = statement.limit(limit)
 
         result = await self.session.execute(statement)
 

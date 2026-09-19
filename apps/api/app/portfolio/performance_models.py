@@ -44,6 +44,9 @@ class PortfolioCurrencyPerformance(BaseModel):
         ge=0,
     )
     period_return: Decimal | None
+    external_cash_flow_adjusted_period_return: Decimal | None
+    external_cash_flow_count: int = Field(ge=0)
+    external_net_cash_flow: Decimal = Decimal("0")
     points: tuple[PortfolioPerformancePoint, ...] = ()
     sources: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()

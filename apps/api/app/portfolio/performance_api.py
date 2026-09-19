@@ -8,6 +8,9 @@ from app.api.auth import CurrentUser
 from app.api.market_data import get_market_data_service
 from app.db.session import get_db_session
 from app.market_data.service import MarketDataService
+from app.portfolio.cash_flow_persistence import (
+    PortfolioCashFlowPersistenceService,
+)
 from app.portfolio.performance import PortfolioPerformanceService
 from app.portfolio.performance_schemas import (
     PortfolioCurrencyPerformanceResponse,
@@ -56,6 +59,11 @@ def _to_response(
             initial_value=item.initial_value,
             latest_value=item.latest_value,
             period_return=item.period_return,
+            external_cash_flow_adjusted_period_return=(
+                item.external_cash_flow_adjusted_period_return
+            ),
+            external_cash_flow_count=item.external_cash_flow_count,
+            external_net_cash_flow=item.external_net_cash_flow,
             points=tuple(
                 PortfolioPerformancePointResponse(
                     observed_on=point.observed_on,
@@ -106,6 +114,7 @@ async def get_portfolio_performance(
     service = PortfolioPerformanceService(
         persistence=PortfolioPersistenceService(session),
         market_data=market_data,
+        cash_flow_persistence=PortfolioCashFlowPersistenceService(session),
     )
 
     try:
