@@ -4,12 +4,14 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.db.models.instrument import Instrument
 from app.db.models.market_bar import MarketBar
 from app.db.models.portfolio import PortfolioPositionRecord, PortfolioRecord
+from app.db.models.portfolio_history import PortfolioPositionHistoryRecord
 from app.db.models.user import User
 from app.portfolio.risk_metrics import (
     calculate_annualized_volatility,
@@ -129,6 +131,30 @@ async def create_bar(
     await db_session.commit()
 
 
+async def backdate_latest_position_history(
+    db_session: AsyncSession,
+    *,
+    portfolio_id,
+    instrument_id,
+    recorded_at: datetime,
+) -> None:
+    result = await db_session.execute(
+        select(PortfolioPositionHistoryRecord)
+        .where(
+            PortfolioPositionHistoryRecord.portfolio_id == portfolio_id,
+            PortfolioPositionHistoryRecord.instrument_id == instrument_id,
+        )
+        .order_by(PortfolioPositionHistoryRecord.sequence_id.desc())
+        .limit(1),
+    )
+
+    history = result.scalar_one()
+    history.recorded_at = recorded_at
+
+    await db_session.commit()
+    await db_session.refresh(history)
+
+
 async def cleanup_portfolio_test(
     db_session,
     *,
@@ -186,6 +212,13 @@ async def test_risk_metrics_endpoint_returns_volatility_and_drawdown(
 
     assessed_at = datetime.now(UTC)
 
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=instrument.id,
+        recorded_at=assessed_at - timedelta(days=4),
+    )
+
     await create_bar(
         db_session,
         instrument_id=instrument.id,
@@ -220,7 +253,7 @@ async def test_risk_metrics_endpoint_returns_volatility_and_drawdown(
     assert body["position_count"] == 1
     assert body["annualization_factor"] == 252
     assert body["methodology"].startswith(
-        "Constant-position historical proxy",
+        "Time-aware historical portfolio risk analysis",
     )
 
     assert len(body["currencies"]) == 1
@@ -293,6 +326,19 @@ async def test_multiple_currencies_remain_separate(
     assert eur_position_response.status_code == 200
 
     assessed_at = datetime.now(UTC)
+
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=usd_instrument.id,
+        recorded_at=assessed_at - timedelta(days=4),
+    )
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=eur_instrument.id,
+        recorded_at=assessed_at - timedelta(days=4),
+    )
 
     for instrument_id, prices in (
         (
@@ -374,6 +420,13 @@ async def test_insufficient_history_does_not_create_volatility(
     assert position_response.status_code == 200
 
     assessed_at = datetime.now(UTC)
+
+    await backdate_latest_position_history(
+        db_session,
+        portfolio_id=portfolio_id,
+        instrument_id=instrument.id,
+        recorded_at=assessed_at - timedelta(days=3),
+    )
 
     await create_bar(
         db_session,

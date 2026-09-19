@@ -34,6 +34,8 @@ function getQualityVariant(
       return "neutral";
     case "empty":
       return "info";
+    default:
+      return "neutral";
   }
 }
 
@@ -222,7 +224,7 @@ export function PortfolioRiskMetricsPanel({
   return (
     <Card
       title="Historical risk metrics"
-      description="Review historical volatility and maximum drawdown using current persisted quantities. Currency buckets remain separate and no FX conversion is applied."
+      description="Review historical volatility and maximum drawdown using reconstructed historical position states. Currency buckets remain separate and no FX conversion is applied. Risk calculations reset across holding changes because external cash-flow amounts are not persisted."
     >
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-4 rounded-md border border-border bg-surface-subtle p-4 sm:flex-row sm:items-end sm:justify-between">
