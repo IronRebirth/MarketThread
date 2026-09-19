@@ -5,6 +5,7 @@ from uuid import UUID
 from app.market_data.models import Bar, MarketDataIngestionResult, Quote
 from app.market_data.persistence import MarketDataPersistenceService
 from app.market_data.providers.base import MarketDataProvider
+from app.market_data.validation import validate_bars, validate_quote
 
 
 class MarketDataIngestionService:
@@ -25,7 +26,7 @@ class MarketDataIngestionService:
         end: datetime,
         include_quote: bool = True,
     ) -> MarketDataIngestionResult | None:
-        """Fetch and persist an instrument, quote, and historical bars."""
+        """Fetch, validate, and persist market data for an instrument."""
 
         normalized_symbol = symbol.strip().upper()
 
@@ -41,10 +42,6 @@ class MarketDataIngestionService:
             return None
 
         try:
-            persisted_instrument = await self.persistence.upsert_instrument(
-                instrument,
-            )
-
             quote = None
             if include_quote:
                 quote = await self.provider.get_quote(instrument.id)
@@ -55,12 +52,19 @@ class MarketDataIngestionService:
                 end,
             )
 
+            validated_quote = validate_quote(quote) if quote is not None else None
+            validated_bars = validate_bars(list(bars))
+
+            persisted_instrument = await self.persistence.upsert_instrument(
+                instrument,
+            )
+
             normalized_quote = self._remap_quote(
-                quote,
+                validated_quote,
                 persisted_instrument.id,
             )
             normalized_bars = self._remap_bars(
-                bars,
+                validated_bars,
                 persisted_instrument.id,
             )
 

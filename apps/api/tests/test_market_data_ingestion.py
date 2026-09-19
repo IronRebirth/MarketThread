@@ -12,6 +12,7 @@ from app.db.models.market_data import MarketQuote
 from app.market_data.ingestion import MarketDataIngestionService
 from app.market_data.models import Bar, Instrument, Quote
 from app.market_data.persistence import MarketDataPersistenceService
+from app.market_data.validation import MarketDataValidationError
 
 
 class FakeIngestionProvider:
@@ -222,3 +223,142 @@ async def test_ingestion_rejects_invalid_date_range(db_session) -> None:
             start=timestamp,
             end=timestamp,
         )
+
+
+@pytest.mark.asyncio
+async def test_ingestion_rejects_invalid_quote_before_persistence(
+    db_session,
+) -> None:
+    symbol = f"INVALIDQ{uuid4().hex[:8].upper()}"
+    provider = FakeIngestionProvider(symbol=symbol)
+    provider.quote = provider.quote.model_copy(
+        update={
+            "bid": Decimal("201"),
+            "ask": Decimal("200"),
+        },
+    )
+
+    persistence = MarketDataPersistenceService(db_session)
+    service = MarketDataIngestionService(provider, persistence)
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 1, 4, tzinfo=UTC)
+
+    with pytest.raises(
+        MarketDataValidationError,
+        match="quote bid must be less than or equal to quote ask",
+    ):
+        await service.ingest(
+            symbol=symbol,
+            start=start,
+            end=end,
+        )
+
+    instrument = await db_session.scalar(
+        select(InstrumentRecord).where(
+            InstrumentRecord.symbol == symbol,
+        ),
+    )
+    assert instrument is None
+
+    quote_count = await db_session.scalar(
+        select(MarketQuote.id)
+        .join(
+            InstrumentRecord,
+            MarketQuote.instrument_id == InstrumentRecord.id,
+        )
+        .where(
+            InstrumentRecord.symbol == symbol,
+        )
+        .limit(1),
+    )
+    assert quote_count is None
+
+
+@pytest.mark.asyncio
+async def test_ingestion_rejects_invalid_bar_before_persistence(
+    db_session,
+) -> None:
+    symbol = f"INVALIDB{uuid4().hex[:8].upper()}"
+    provider = FakeIngestionProvider(symbol=symbol)
+    provider.bars = [
+        provider.bars[0].model_copy(
+            update={
+                "high": Decimal("196"),
+            },
+        ),
+    ]
+
+    persistence = MarketDataPersistenceService(db_session)
+    service = MarketDataIngestionService(provider, persistence)
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 1, 4, tzinfo=UTC)
+
+    with pytest.raises(
+        MarketDataValidationError,
+        match="bar high must be greater than or equal to bar low",
+    ):
+        await service.ingest(
+            symbol=symbol,
+            start=start,
+            end=end,
+        )
+
+    instrument = await db_session.scalar(
+        select(InstrumentRecord).where(
+            InstrumentRecord.symbol == symbol,
+        ),
+    )
+    assert instrument is None
+
+    bar_count = await db_session.scalar(
+        select(MarketBar.id)
+        .join(
+            InstrumentRecord,
+            MarketBar.instrument_id == InstrumentRecord.id,
+        )
+        .where(
+            InstrumentRecord.symbol == symbol,
+        )
+        .limit(1),
+    )
+    assert bar_count is None
+
+
+@pytest.mark.asyncio
+async def test_ingestion_rejects_negative_volume_before_persistence(
+    db_session,
+) -> None:
+    symbol = f"INVALIDV{uuid4().hex[:8].upper()}"
+    provider = FakeIngestionProvider(symbol=symbol)
+    provider.bars = [
+        provider.bars[0].model_copy(
+            update={
+                "volume": Decimal("-1"),
+            },
+        ),
+    ]
+
+    persistence = MarketDataPersistenceService(db_session)
+    service = MarketDataIngestionService(provider, persistence)
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 1, 4, tzinfo=UTC)
+
+    with pytest.raises(
+        MarketDataValidationError,
+        match="bar volume must be greater than or equal to zero",
+    ):
+        await service.ingest(
+            symbol=symbol,
+            start=start,
+            end=end,
+        )
+
+    instrument = await db_session.scalar(
+        select(InstrumentRecord).where(
+            InstrumentRecord.symbol == symbol,
+        ),
+    )
+    assert instrument is None

@@ -7,6 +7,7 @@ import { useAuth } from "../auth/auth-provider";
 import { PortfolioExposurePanel } from "./portfolio-exposure-panel";
 import { PortfolioPerformancePanel } from "./portfolio-performance-panel";
 import { PortfolioPositionForm } from "./portfolio-position-form";
+import { PortfolioRiskMetricsPanel } from "./portfolio-risk-metrics-panel";
 import { PortfolioValuationPanel } from "./portfolio-valuation-panel";
 import {
   createPortfolio,
@@ -14,6 +15,7 @@ import {
   fetchPortfolio,
   fetchPortfolioExposure,
   fetchPortfolioPerformance,
+  fetchPortfolioRiskMetrics,
   fetchPortfolioValuation,
   fetchPortfolios,
   PortfolioApiError,
@@ -23,6 +25,7 @@ import {
   type PortfolioExposureResponse,
   type PortfolioPerformanceResponse,
   type PortfolioPosition,
+  type PortfolioRiskMetricsResponse,
   type PortfolioValuationResponse,
 } from "../../lib/portfolio-api";
 import { Badge } from "../ui/badge";
@@ -160,8 +163,12 @@ export function PortfolioDashboard() {
     useState<PortfolioExposureResponse | null>(null);
   const [selectedPerformance, setSelectedPerformance] =
     useState<PortfolioPerformanceResponse | null>(null);
+  const [selectedRiskMetrics, setSelectedRiskMetrics] =
+    useState<PortfolioRiskMetricsResponse | null>(null);
 
   const [performanceLookbackDays, setPerformanceLookbackDays] =
+    useState(365);
+  const [riskMetricsLookbackDays, setRiskMetricsLookbackDays] =
     useState(365);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -171,6 +178,8 @@ export function PortfolioDashboard() {
   const [isExposureLoading, setIsExposureLoading] =
     useState(false);
   const [isPerformanceLoading, setIsPerformanceLoading] =
+    useState(false);
+  const [isRiskMetricsLoading, setIsRiskMetricsLoading] =
     useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(
@@ -184,6 +193,8 @@ export function PortfolioDashboard() {
   const [exposureErrorMessage, setExposureErrorMessage] =
     useState<string | null>(null);
   const [performanceErrorMessage, setPerformanceErrorMessage] =
+    useState<string | null>(null);
+  const [riskMetricsErrorMessage, setRiskMetricsErrorMessage] =
     useState<string | null>(null);
 
   const [portfolioName, setPortfolioName] = useState("");
@@ -342,6 +353,36 @@ export function PortfolioDashboard() {
     [],
   );
 
+  const loadSelectedPortfolioRiskMetrics = useCallback(
+    async (
+      portfolioId: string,
+      lookbackDays: number,
+    ) => {
+      setIsRiskMetricsLoading(true);
+      setRiskMetricsErrorMessage(null);
+
+      try {
+        const riskMetrics = await fetchPortfolioRiskMetrics(
+          portfolioId,
+          lookbackDays,
+        );
+
+        setSelectedRiskMetrics(riskMetrics);
+      } catch (error) {
+        setSelectedRiskMetrics(null);
+        setRiskMetricsErrorMessage(
+          getErrorMessage(
+            error,
+            "The historical portfolio risk metrics could not be loaded.",
+          ),
+        );
+      } finally {
+        setIsRiskMetricsLoading(false);
+      }
+    },
+    [],
+  );
+
   const loadSelectedPortfolio = useCallback(
     async (portfolioId: string) => {
       setIsDetailLoading(true);
@@ -352,6 +393,8 @@ export function PortfolioDashboard() {
       setExposureErrorMessage(null);
       setSelectedPerformance(null);
       setPerformanceErrorMessage(null);
+      setSelectedRiskMetrics(null);
+      setRiskMetricsErrorMessage(null);
 
       try {
         const detail = await fetchPortfolio(portfolioId);
@@ -397,6 +440,27 @@ export function PortfolioDashboard() {
     selectedPortfolioId,
     performanceLookbackDays,
     loadSelectedPortfolioPerformance,
+  ]);
+
+  useEffect(() => {
+    if (!selectedPortfolioId) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadSelectedPortfolioRiskMetrics(
+        selectedPortfolioId,
+        riskMetricsLookbackDays,
+      );
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    selectedPortfolioId,
+    riskMetricsLookbackDays,
+    loadSelectedPortfolioRiskMetrics,
   ]);
 
   useEffect(() => {
@@ -478,6 +542,10 @@ export function PortfolioDashboard() {
         selectedPortfolioId,
         performanceLookbackDays,
       ),
+      loadSelectedPortfolioRiskMetrics(
+        selectedPortfolioId,
+        riskMetricsLookbackDays,
+      ),
     ]);
   };
 
@@ -503,6 +571,10 @@ export function PortfolioDashboard() {
         loadSelectedPortfolioPerformance(
           selectedPortfolioId,
           performanceLookbackDays,
+        ),
+        loadSelectedPortfolioRiskMetrics(
+          selectedPortfolioId,
+          riskMetricsLookbackDays,
         ),
       ]);
     } catch (error) {
@@ -540,6 +612,7 @@ export function PortfolioDashboard() {
       setSelectedValuation(null);
       setSelectedExposure(null);
       setSelectedPerformance(null);
+      setSelectedRiskMetrics(null);
       setSelectedPortfolioId(null);
 
       await loadPortfolios();
@@ -594,8 +667,9 @@ export function PortfolioDashboard() {
 
           <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
             Maintain persisted holdings and inspect server-backed
-            valuation, historical performance, and exposure with
-            explicit data-quality and currency boundaries.
+            valuation, historical performance, risk metrics, and
+            exposure with explicit data-quality and currency
+            boundaries.
           </p>
 
           {user && (
@@ -842,6 +916,20 @@ export function PortfolioDashboard() {
                 }
               />
 
+              <PortfolioRiskMetricsPanel
+                riskMetrics={selectedRiskMetrics}
+                isLoading={isRiskMetricsLoading}
+                errorMessage={riskMetricsErrorMessage}
+                lookbackDays={riskMetricsLookbackDays}
+                onLookbackDaysChange={setRiskMetricsLookbackDays}
+                onRefresh={() =>
+                  void loadSelectedPortfolioRiskMetrics(
+                    selectedPortfolio.portfolio_id,
+                    riskMetricsLookbackDays,
+                  )
+                }
+              />
+
               <PortfolioExposurePanel
                 exposure={selectedExposure}
                 isLoading={isExposureLoading}
@@ -1025,8 +1113,8 @@ export function PortfolioDashboard() {
                   />
 
                   <ReadinessNote
-                    title="Exposure analysis"
-                    description="Currency, asset-class, and position concentration are derived from quality-aware valuation data without creating a fabricated portfolio risk score."
+                    title="Historical risk analysis"
+                    description="Volatility and maximum drawdown are calculated from complete historical observations without creating a synthetic cross-currency risk score."
                   />
                 </div>
               </Card>
