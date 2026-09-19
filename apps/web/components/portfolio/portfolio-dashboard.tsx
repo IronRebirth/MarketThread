@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "../auth/auth-provider";
+import { PortfolioCashFlowPanel } from "./portfolio-cash-flow-panel";
 import { PortfolioExposurePanel } from "./portfolio-exposure-panel";
 import { PortfolioPerformancePanel } from "./portfolio-performance-panel";
 import { PortfolioPositionForm } from "./portfolio-position-form";
@@ -667,9 +668,9 @@ export function PortfolioDashboard() {
 
           <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
             Maintain persisted holdings and inspect server-backed
-            valuation, historical performance, risk metrics, and
-            exposure with explicit data-quality and currency
-            boundaries.
+            valuation, historical performance, risk metrics,
+            exposure, and external cash-flow history with explicit
+            data-quality, currency, and accounting boundaries.
           </p>
 
           {user && (
@@ -914,6 +915,10 @@ export function PortfolioDashboard() {
                     performanceLookbackDays,
                   )
                 }
+              />
+
+              <PortfolioCashFlowPanel
+                portfolioId={selectedPortfolio.portfolio_id}
               />
 
               <PortfolioRiskMetricsPanel
