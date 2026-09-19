@@ -1,59 +1,61 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
+from app.portfolio.performance_models import PerformanceQuality
 from app.portfolio.schemas import PortfolioResponse
-
-PerformanceQuality = Literal[
-    "sufficient",
-    "insufficient",
-    "unavailable",
-    "empty",
-]
 
 
 class PortfolioPerformancePointResponse(BaseModel):
-    """Historical portfolio value at one observed date."""
+    """API representation of one historical portfolio value observation."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(frozen=True)
 
     observed_on: date
     value: Decimal
 
 
 class PortfolioCurrencyPerformanceResponse(BaseModel):
-    """Historical performance for one currency bucket."""
+    """API representation of historical performance for one currency."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(frozen=True)
 
     currency: str
-    position_count: int
+    position_count: int = Field(ge=1)
     quality: PerformanceQuality
     first_observed_on: date | None
     last_observed_on: date | None
-    observation_count: int
-    return_count: int
-    initial_value: Decimal | None
-    latest_value: Decimal | None
+    observation_count: int = Field(ge=0)
+    return_count: int = Field(ge=0)
+    initial_value: Decimal | None = Field(
+        default=None,
+        ge=0,
+    )
+    latest_value: Decimal | None = Field(
+        default=None,
+        ge=0,
+    )
     period_return: Decimal | None
-    points: tuple[PortfolioPerformancePointResponse, ...]
-    sources: tuple[str, ...]
-    notes: tuple[str, ...]
+    external_cash_flow_adjusted_period_return: Decimal | None
+    external_cash_flow_count: int = Field(ge=0)
+    external_net_cash_flow: Decimal = Decimal("0")
+    points: tuple[PortfolioPerformancePointResponse, ...] = ()
+    sources: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
 
 
 class PortfolioPerformanceResponse(BaseModel):
-    """API response for historical portfolio performance."""
+    """API representation of quality-aware historical performance."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(frozen=True)
 
     portfolio: PortfolioResponse
     assessed_at: datetime
     lookback_start: datetime
     lookback_end: datetime
-    lookback_days: int
-    position_count: int
+    lookback_days: int = Field(gt=0)
+    position_count: int = Field(ge=0)
     quality: PerformanceQuality
-    methodology: str
+    methodology: str = Field(min_length=1)
     currencies: tuple[PortfolioCurrencyPerformanceResponse, ...]
