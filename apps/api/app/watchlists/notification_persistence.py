@@ -57,20 +57,14 @@ class WatchlistNotificationPersistenceService:
         await self.session.execute(statement)
         await self.session.commit()
 
-        pairs = tuple(
-            (rule.alert_rule_id, alert.alert_id)
-            for rule, alert in matches
-        )
+        pairs = tuple((rule.rule_id, alert.alert_id) for rule, alert in matches)
 
         notification_records = await self._get_records_for_pairs(
             user_id=user_id,
             pairs=pairs,
         )
 
-        return tuple(
-            self._to_domain(record)
-            for record in notification_records
-        )
+        return tuple(self._to_domain(record) for record in notification_records)
 
     async def count_for_pairs(
         self,
@@ -94,12 +88,7 @@ class WatchlistNotificationPersistenceService:
         result = await self.session.scalar(
             select(func.count(WatchlistNotificationRecord.id)).where(
                 WatchlistNotificationRecord.user_id == user_id,
-                or_(
-                    *(
-                        condition[0] & condition[1]
-                        for condition in conditions
-                    )
-                ),
+                or_(*(condition[0] & condition[1] for condition in conditions)),
             ),
         )
 
@@ -136,10 +125,7 @@ class WatchlistNotificationPersistenceService:
 
         result = await self.session.execute(statement)
 
-        return tuple(
-            self._to_domain(record)
-            for record in result.scalars().all()
-        )
+        return tuple(self._to_domain(record) for record in result.scalars().all())
 
     async def count_unread(
         self,
@@ -214,12 +200,7 @@ class WatchlistNotificationPersistenceService:
             select(WatchlistNotificationRecord)
             .where(
                 WatchlistNotificationRecord.user_id == user_id,
-                or_(
-                    *(
-                        condition[0] & condition[1]
-                        for condition in conditions
-                    )
-                ),
+                or_(*(condition[0] & condition[1] for condition in conditions)),
             )
             .order_by(
                 WatchlistNotificationRecord.created_at.asc(),

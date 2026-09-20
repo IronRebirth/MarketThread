@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +20,8 @@ from app.watchlists.notification_persistence import (
 )
 from app.watchlists.notification_schemas import (
     WatchlistNotificationReadResponse,
-    WatchlistNotificationsResponse,
     WatchlistNotificationResponse,
+    WatchlistNotificationsResponse,
     WatchlistNotificationSyncResponse,
 )
 from app.watchlists.notifications import WatchlistNotificationService
@@ -40,10 +41,7 @@ DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 async def sync_notifications(
     current_user: CurrentUser,
     session: DatabaseSession,
-    assessed_at: datetime | None = Query(
-        default=None,
-        description="Optional timezone-aware assessment timestamp.",
-    ),
+    assessed_at: datetime | None = None,
 ) -> WatchlistNotificationSyncResponse:
     """Materialize new in-app notifications from current watchlist intelligence."""
 
@@ -94,10 +92,7 @@ async def sync_notifications(
 
         matched_alert_count += len({alert.alert_id for _, alert in pairs})
 
-        pair_ids = tuple(
-            (rule.alert_rule_id, alert.alert_id)
-            for rule, alert in pairs
-        )
+        pair_ids = tuple((rule.rule_id, alert.alert_id) for rule, alert in pairs)
 
         existing_before = await notification_persistence.count_for_pairs(
             user_id=current_user.id,
@@ -129,10 +124,16 @@ async def sync_notifications(
 async def list_notifications(
     current_user: CurrentUser,
     session: DatabaseSession,
-    limit: int = Query(default=100, ge=1, le=100),
+    limit: int = 100,
     unread_only: bool = False,
 ) -> WatchlistNotificationsResponse:
     """Return persisted in-app notifications for the authenticated user."""
+
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="limit must be between 1 and 100.",
+        )
 
     service = WatchlistNotificationPersistenceService(session)
 
@@ -145,8 +146,7 @@ async def list_notifications(
 
     return WatchlistNotificationsResponse(
         notifications=tuple(
-            _to_response(notification)
-            for notification in notifications
+            _to_response(notification) for notification in notifications
         ),
         returned_count=len(notifications),
         unread_count=unread_count,

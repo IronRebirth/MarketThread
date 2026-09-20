@@ -255,10 +255,13 @@ async def test_sync_materializes_matching_alert_as_notification(
     assert notification["direction"] == "positive"
     assert notification["read_at"] is None
 
-    assert await count_notifications(
-        db_session,
-        user_id=(await client.get("/auth/me", headers=headers)).json()["id"],
-    ) == 1
+    assert (
+        await count_notifications(
+            db_session,
+            user_id=(await client.get("/auth/me", headers=headers)).json()["id"],
+        )
+        == 1
+    )
 
 
 @pytest.mark.asyncio
@@ -356,10 +359,10 @@ async def test_one_alert_can_create_one_notification_per_matching_rule(
 
     assert body["returned_count"] == 2
     assert body["unread_count"] == 2
-    assert {
-        item["rule_name"]
-        for item in body["notifications"]
-    } == {"Rule one", "Rule two"}
+    assert {item["rule_name"] for item in body["notifications"]} == {
+        "Rule one",
+        "Rule two",
+    }
 
 
 @pytest.mark.asyncio
