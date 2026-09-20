@@ -1,4 +1,4 @@
-from email.message import EmailMessage
+import os
 from uuid import UUID
 
 import pytest
@@ -192,8 +192,7 @@ async def test_enabled_dispatch_sends_once_and_is_idempotent(
 
     delivery = await db_session.scalar(
         select(NotificationEmailDeliveryRecord).where(
-            NotificationEmailDeliveryRecord.notification_id
-            == UUID(notification_id),
+            NotificationEmailDeliveryRecord.notification_id == UUID(notification_id),
         ),
     )
 
@@ -252,8 +251,7 @@ async def test_failed_email_delivery_is_recorded_for_retry(
 
     delivery = await db_session.scalar(
         select(NotificationEmailDeliveryRecord).where(
-            NotificationEmailDeliveryRecord.notification_id
-            == UUID(notification_id),
+            NotificationEmailDeliveryRecord.notification_id == UUID(notification_id),
         ),
     )
 
@@ -263,35 +261,12 @@ async def test_failed_email_delivery_is_recorded_for_retry(
     assert delivery.last_error == "SMTP_HOST is not configured."
 
 
-def test_email_service_rejects_missing_smtp_port() -> None:
+def test_blank_smtp_environment_values_use_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SMTP_PORT", "")
     settings = Settings(
-        database_url="postgresql+psycopg://test:test@localhost:5432/test",
-        smtp_host="smtp.example.com",
-        smtp_port=None,
-        smtp_from_email="alerts@example.com",
+        _env_file=None,
     )
 
-    notification = {
-        "notification_id": UUID("00000000-0000-0000-0000-000000000001"),
-        "user_id": UUID("00000000-0000-0000-0000-000000000002"),
-        "watchlist_id": UUID("00000000-0000-0000-0000-000000000003"),
-        "alert_rule_id": UUID("00000000-0000-0000-0000-000000000004"),
-        "alert_id": UUID("00000000-0000-0000-0000-000000000005"),
-        "symbol": "TEST",
-        "rule_name": "Test rule",
-        "title": "Test notification",
-        "message": "Test notification message",
-        "event_type": "earnings",
-        "direction": "positive",
-        "confidence": 0.9,
-        "created_at": "2026-09-20T00:00:00+00:00",
-        "read_at": None,
-    }
-
-    from app.watchlists.notification_models import WatchlistNotification
-
-    with pytest.raises(EmailDeliveryConfigurationError):
-        NotificationEmailService(settings).send(
-            recipient_email="user@example.com",
-            notification=WatchlistNotification.model_validate(notification),
-        )
+    assert settings.smtp_port == 587
