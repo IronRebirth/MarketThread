@@ -1,13 +1,12 @@
 import { AppShell } from "../../components/layout/app-shell";
-import { AuthRequiredGate } from "../../components/auth/auth-required-gate";
+import { AuthRequiredPrompt } from "../../components/auth/auth-required-prompt";
+import { useAuth } from "../../components/auth/auth-provider";
 import { WatchlistDashboard } from "../../components/watchlists/watchlist-dashboard";
 
 export default function WatchlistsPage() {
   return (
     <AppShell>
-      <AuthRequiredGate nextPath="/watchlists">
-        <WatchlistDashboard />
-      </AuthRequiredGate>
+      <WatchlistDashboard />
     </AppShell>
   );
 }
