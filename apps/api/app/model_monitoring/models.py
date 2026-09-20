@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class MonitoringPrediction(BaseModel):
@@ -20,9 +20,37 @@ class ModelMonitoringRequest(BaseModel):
     window_end: datetime
     observed_at: datetime
     predictions: tuple[MonitoringPrediction, ...] = Field(min_length=1)
-    reference_features: dict[str, tuple[float, ...]] = {}
-    current_features: dict[str, tuple[float, ...]] = {}
+    reference_predictions: tuple[float, ...] = ()
+    reference_features: dict[str, tuple[float, ...]] = Field(default_factory=dict)
+    current_features: dict[str, tuple[float, ...]] = Field(default_factory=dict)
     market_returns: tuple[float, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_window(self) -> "ModelMonitoringRequest":
+        timestamps = (
+            self.window_start,
+            self.window_end,
+            self.observed_at,
+        )
+
+        if any(timestamp.tzinfo is None for timestamp in timestamps):
+            raise ValueError("Monitoring timestamps must include a timezone.")
+
+        if self.window_end <= self.window_start:
+            raise ValueError("window_end must be later than window_start.")
+
+        if self.observed_at < self.window_end:
+            raise ValueError("observed_at must not precede window_end.")
+
+        if any(
+            probability < 0.0 or probability > 1.0
+            for probability in self.reference_predictions
+        ):
+            raise ValueError(
+                "reference_predictions must contain probabilities between 0 and 1.",
+            )
+
+        return self
 
 
 class CalibrationMetrics(BaseModel):
