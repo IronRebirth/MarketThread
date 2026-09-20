@@ -3,12 +3,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.models.user import User
 from app.admin.service import AdminService
+from app.db.models.user import User
 
 
 @pytest.mark.asyncio
-async def test_admin_service_reports_unconfigured_optional_providers(db_session) -> None:
+async def test_admin_service_reports_unconfigured_optional_providers(
+    db_session,
+) -> None:
     service = AdminService()
 
     health = await service.system_health(
