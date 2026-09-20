@@ -83,6 +83,24 @@ export type StockResearchHistoricalQuality = {
   sources: string[];
 };
 
+export type StockResearchEvidenceArticle = {
+  article_id: string;
+  source_name: string;
+  source_domain: string;
+  title: string;
+  url: string;
+  published_at: string;
+};
+
+export type StockResearchEvidence = {
+  article_ids: string[];
+  articles: StockResearchEvidenceArticle[];
+  supporting_factors: string[];
+  contradicting_factors: string[];
+  invalidation_conditions: string[];
+  confidence: number;
+  risk_score: number;
+};
 export type StockResearchData = {
   instrument: StockResearchInstrument;
   quote: StockResearchQuote | null;
@@ -94,6 +112,7 @@ export type StockResearchData = {
   impacts: CompanyImpact[];
   signals: MarketSignal[];
   recommendations: Recommendation[];
+  evidence: StockResearchEvidence;
 };
 
 export class StockResearchApiError extends Error {
@@ -145,6 +164,45 @@ async function authenticatedJson<T>(
   }
 
   return (await response.json()) as T;
+}
+
+
+async function fetchEvidenceArticles(
+  articleIds: string[],
+): Promise<StockResearchEvidenceArticle[]> {
+  const uniqueIds = [...new Set(articleIds)];
+
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const results = await Promise.allSettled(
+    uniqueIds.slice(0, 12).map((articleId) =>
+      authenticatedJson<{
+        article: {
+          article_id: string;
+          source_name: string;
+          source_domain: string;
+          title: string;
+          url: string;
+          published_at: string;
+        };
+      }>(`${API_BASE_URL}/news/${encodeURIComponent(articleId)}`),
+    ),
+  );
+
+  return results.flatMap((result) =>
+    result.status === "fulfilled"
+      ? [{
+          article_id: result.value.article.article_id,
+          source_name: result.value.article.source_name,
+          source_domain: result.value.article.source_domain,
+          title: result.value.article.title,
+          url: result.value.article.url,
+          published_at: result.value.article.published_at,
+        }]
+      : [],
+  );
 }
 
 export async function fetchStockResearch(
@@ -288,6 +346,35 @@ export async function fetchStockResearch(
     );
   }
 
+  const primarySignal = signals[0];
+  const primaryRecommendation = recommendations[0];
+  const evidenceArticleIds = [
+    ...(primarySignal?.evidence_article_ids ?? []),
+    ...(primaryRecommendation?.evidence_article_ids ?? []),
+    ...impacts.flatMap((impact) => impact.evidence_article_ids ?? []),
+  ];
+
+  const evidenceArticles = await fetchEvidenceArticles(evidenceArticleIds);
+
+  const evidence = {
+    article_ids: [...new Set(evidenceArticleIds)],
+    articles: evidenceArticles,
+    supporting_factors: primarySignal?.supporting_factors ?? [],
+    contradicting_factors: primarySignal?.contradicting_factors ?? [],
+    invalidation_conditions:
+      primaryRecommendation?.invalidation_conditions ??
+      primarySignal?.invalidation_conditions ??
+      [],
+    confidence:
+      primaryRecommendation?.confidence_score ??
+      primarySignal?.confidence ??
+      0,
+    risk_score:
+      primaryRecommendation?.risk_score ??
+      primarySignal?.risk_score ??
+      0,
+  };
+
   return {
     instrument,
     quote,
@@ -303,5 +390,6 @@ export async function fetchStockResearch(
     impacts,
     signals,
     recommendations,
+    evidence,
   };
 }
