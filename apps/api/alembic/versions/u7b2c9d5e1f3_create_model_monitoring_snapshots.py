@@ -4,8 +4,8 @@ Revision ID: u7b2c9d5e1f3
 Revises: t6a1c9e4b7d8
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "u7b2c9d5e1f3"
 down_revision = "t6a1c9e4b7d8"
@@ -26,6 +26,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
+
     op.create_index(
         "ix_model_monitoring_snapshots_model_name",
         "model_monitoring_snapshots",
@@ -39,6 +40,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_model_monitoring_snapshots_observed_at", table_name="model_monitoring_snapshots")
-    op.drop_index("ix_model_monitoring_snapshots_model_name", table_name="model_monitoring_snapshots")
+    op.drop_index(
+        "ix_model_monitoring_snapshots_observed_at",
+        table_name="model_monitoring_snapshots",
+    )
+    op.drop_index(
+        "ix_model_monitoring_snapshots_model_name",
+        table_name="model_monitoring_snapshots",
+    )
     op.drop_table("model_monitoring_snapshots")
