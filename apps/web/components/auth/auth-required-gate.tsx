@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { useAuth } from "./auth-provider";
 
 interface AuthRequiredGateProps {
   nextPath: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function AuthRequiredGate({
