@@ -1,7 +1,9 @@
 from httpx import AsyncClient
 
 
-async def test_request_body_limit_rejects_oversized_content(client: AsyncClient) -> None:
+async def test_request_body_limit_rejects_oversized_content(
+    client: AsyncClient,
+) -> None:
     response = await client.post(
         "/auth/register",
         content=b"x" * (1024 * 1024 + 1),
