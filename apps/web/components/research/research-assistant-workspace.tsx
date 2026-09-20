@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import Link from "next/link";
 
 import { useAuth } from "../auth/auth-provider";
 import { AuthRequiredPrompt } from "../auth/auth-required-prompt";
@@ -138,17 +137,7 @@ export function ResearchAssistantWorkspace() {
           </div>
         </header>
 
-        <Card
-          title="Sign in required"
-          description="Research answers can include user-scoped portfolio context, so this workspace requires authentication."
-        >
-          <Link
-            href="/login"
-            className="inline-flex h-10 items-center rounded-md bg-brand px-4 text-sm font-medium text-text-inverse hover:bg-brand-hover"
-          >
-            Sign in to continue
-          </Link>
-        </Card>
+        <AuthRequiredPrompt nextPath="/research" />
       </div>
     );
   }
