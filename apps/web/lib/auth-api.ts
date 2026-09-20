@@ -121,6 +121,25 @@ export async function getCurrentUser(
   });
 }
 
+export async function revokeAccessToken(
+  accessToken: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok && response.status !== 401) {
+    throw new AuthApiError(
+      response.status,
+      await readErrorMessage(response),
+    );
+  }
+}
+
 export function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") {
     return null;
