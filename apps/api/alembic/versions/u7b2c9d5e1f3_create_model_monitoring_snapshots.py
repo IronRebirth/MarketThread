@@ -1,7 +1,7 @@
 """create model monitoring snapshots
 
 Revision ID: v8c3e7f2a4b1
-Revises: t6a1c9e4b7d8
+Revises: u7b2c5d9e1f3
 """
 
 import sqlalchemy as sa
