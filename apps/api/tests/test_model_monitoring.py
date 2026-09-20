@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
+import pytest
 from pydantic import ValidationError
 
 from app.model_monitoring.models import (
@@ -49,7 +51,7 @@ def test_monitoring_report_computes_performance_and_calibration() -> None:
 
     assert report.performance.sample_count == 4
     assert report.performance.accuracy == 1.0
-    assert report.calibration.brier_score == 0.025
+    assert report.calibration.brier_score == pytest.approx(0.025)
     assert report.calibration.expected_calibration_error > 0.0
     assert report.prediction_drift.name == "prediction_probability"
     assert report.prediction_drift.psi == 0.0
