@@ -25,6 +25,7 @@ from app.db.models.recommendation_provenance import (
 from app.db.models.signal import SignalRecord
 from app.db.models.user import User
 from app.db.models.watchlist import WatchlistItemRecord, WatchlistRecord
+from app.db.models.watchlist_alert_state import WatchlistAlertStateRecord
 
 __all__ = [
     "BacktestEvaluation",
@@ -46,6 +47,7 @@ __all__ = [
     "RecommendationRecord",
     "SignalRecord",
     "User",
+    "WatchlistAlertStateRecord",
     "WatchlistItemRecord",
     "WatchlistRecord",
 ]
