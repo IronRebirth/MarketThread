@@ -8,6 +8,7 @@ from app.company_impact.api import router as company_impact_router
 from app.core.config import get_settings
 from app.events.api import router as events_router
 from app.market_impact.api import router as market_impact_router
+from app.model_monitoring.api import router as model_monitoring_router
 from app.news.api import router as news_router
 from app.notifications.email_api import router as notification_email_router
 from app.portfolio.allocation_explanations_api import (
@@ -63,6 +64,7 @@ app.include_router(news_router)
 app.include_router(events_router)
 app.include_router(company_impact_router)
 app.include_router(market_impact_router)
+app.include_router(model_monitoring_router)
 app.include_router(signals_router)
 app.include_router(recommendations_router)
 app.include_router(watchlists_router)
