@@ -1,4 +1,5 @@
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from app.core.config import Settings
@@ -38,7 +39,7 @@ def test_rate_limiter_rejects_requests_after_limit() -> None:
 
     limiter.check(request, "test")
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         limiter.check(request, "test")
 
     assert exc_info.value.status_code == 429
