@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -52,6 +52,28 @@ class Settings(BaseSettings):
 
     sentry_dsn: str | None = None
     admin_emails: str = ""
+
+    @model_validator(mode="after")
+    def validate_production_configuration(self) -> "Settings":
+        if self.app_env.lower() not in {"production", "prod"}:
+            return self
+
+        if self.jwt_secret_key == "marketthread-development-secret-key-32":
+            raise ValueError(
+                "JWT_SECRET_KEY must be explicitly configured in production.",
+            )
+
+        if "change-me" in self.database_url:
+            raise ValueError(
+                "DATABASE_URL must not contain the development password in production.",
+            )
+
+        if "localhost" in self.cors_allowed_origins:
+            raise ValueError(
+                "CORS_ALLOWED_ORIGINS must not use localhost in production.",
+            )
+
+        return self
 
     @field_validator("jwt_algorithm")
     @classmethod
