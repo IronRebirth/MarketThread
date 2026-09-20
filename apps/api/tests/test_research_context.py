@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.models.event import EventRecord
 from app.db.models.fundamental_snapshot import FundamentalSnapshot
 from app.db.models.instrument import Instrument
 from app.db.models.news import NewsArticle, NewsSource
@@ -64,6 +63,7 @@ async def test_research_context_respects_as_of_cutoff(db_session) -> None:
             ),
         ],
     )
+    await db_session.flush()
     await db_session.commit()
 
     context = await ResearchContextService(db_session).build(
@@ -76,7 +76,9 @@ async def test_research_context_respects_as_of_cutoff(db_session) -> None:
     )
 
     assert all(article.published_at <= now for article in context.articles)
-    assert all(fundamental.period_end <= now.date() for fundamental in context.fundamentals)
+    assert all(
+        fundamental.period_end <= now.date() for fundamental in context.fundamentals
+    )
 
 
 @pytest.mark.asyncio
