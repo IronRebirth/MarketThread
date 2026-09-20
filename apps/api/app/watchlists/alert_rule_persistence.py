@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -96,10 +95,7 @@ class WatchlistAlertRulePersistenceService:
             ),
         )
 
-        return tuple(
-            self._to_domain(record)
-            for record in result.scalars().all()
-        )
+        return tuple(self._to_domain(record) for record in result.scalars().all())
 
     async def update(
         self,

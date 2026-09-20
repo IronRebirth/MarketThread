@@ -64,11 +64,7 @@ class WatchlistAlertRuleUpdateRequest(BaseModel):
     def require_change(self) -> "WatchlistAlertRuleUpdateRequest":
         """Reject empty PATCH requests."""
 
-        if (
-            self.name is None
-            and self.conditions is None
-            and self.enabled is None
-        ):
+        if self.name is None and self.conditions is None and self.enabled is None:
             raise ValueError("At least one alert rule field must be provided.")
 
         return self

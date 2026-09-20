@@ -33,8 +33,7 @@ class WatchlistAlertRuleService:
 
         if conditions.event_types:
             allowed_event_types = {
-                cls._normalize(value)
-                for value in conditions.event_types
+                cls._normalize(value) for value in conditions.event_types
             }
 
             if cls._normalize(alert.event_type) not in allowed_event_types:
@@ -42,8 +41,7 @@ class WatchlistAlertRuleService:
 
         if conditions.directions:
             allowed_directions = {
-                cls._normalize(value)
-                for value in conditions.directions
+                cls._normalize(value) for value in conditions.directions
             }
 
             if cls._normalize(alert.direction) not in allowed_directions:
