@@ -36,9 +36,9 @@ class NotificationEmailService:
 
         port = self.settings.smtp_port
 
-        if port < 1 or port > 65535:
+        if port is None or port < 1 or port > 65535:
             raise EmailDeliveryConfigurationError(
-                "SMTP_PORT must be between 1 and 65535.",
+                "SMTP_PORT must be configured between 1 and 65535.",
             )
 
         from_email = self.settings.smtp_from_email
@@ -46,6 +46,11 @@ class NotificationEmailService:
         if not from_email:
             raise EmailDeliveryConfigurationError(
                 "SMTP_FROM_EMAIL is not configured.",
+            )
+
+        if self.settings.smtp_username and not self.settings.smtp_password:
+            raise EmailDeliveryConfigurationError(
+                "SMTP_PASSWORD is required when SMTP_USERNAME is configured.",
             )
 
         message = EmailMessage()
@@ -87,11 +92,6 @@ class NotificationEmailService:
                     smtp.ehlo()
 
                 if self.settings.smtp_username:
-                    if not self.settings.smtp_password:
-                        raise EmailDeliveryConfigurationError(
-                            "SMTP_PASSWORD is required when SMTP_USERNAME is configured.",
-                        )
-
                     smtp.login(
                         self.settings.smtp_username,
                         self.settings.smtp_password,
