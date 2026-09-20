@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { useAuth } from "../auth/auth-provider";
+import { AuthRequiredPrompt } from "../auth/auth-required-prompt";
 import {
   askResearchAssistant,
   ResearchAssistantApiError,
