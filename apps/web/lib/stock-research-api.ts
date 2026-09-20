@@ -196,6 +196,11 @@ export async function fetchStockResearch(
         normalizedSymbol,
       )}/quote`,
     ),
+    authenticatedJson<StockResearchFundamentals>(
+      `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
+        normalizedSymbol,
+      )}/fundamentals`,
+    ),
     authenticatedJson<StockResearchQuoteQuality>(
       `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
         normalizedSymbol,
@@ -231,7 +236,9 @@ export async function fetchStockResearch(
   const quote =
     quoteResult.status === "fulfilled" ? quoteResult.value : null;
   const fundamentals =
-    fundamentalsResult.status === "fulfilled" ? fundamentalsResult.value : null;
+    fundamentalsResult.status === "fulfilled"
+      ? fundamentalsResult.value
+      : null;
   const quoteQuality =
     quoteQualityResult.status === "fulfilled"
       ? quoteQualityResult.value
