@@ -11,6 +11,22 @@ def test_jwt_secret_requires_at_least_32_characters() -> None:
         Settings(jwt_secret_key="too-short")
 
 
+def test_production_configuration_rejects_development_defaults() -> None:
+    with pytest.raises(ValueError, match="explicitly configured"):
+        Settings(app_env="production")
+
+
+def test_production_configuration_accepts_secure_values() -> None:
+    settings = Settings(
+        app_env="production",
+        jwt_secret_key="a" * 64,
+        database_url="postgresql+psycopg://marketthread:strong-password@db:5432/marketthread",
+        cors_allowed_origins="https://marketthread.example.com",
+    )
+
+    assert settings.app_env == "production"
+
+
 async def test_security_headers_are_present(client: AsyncClient) -> None:
     response = await client.get("/health")
 
