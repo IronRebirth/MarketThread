@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,6 +71,39 @@ class WatchlistNotificationPersistenceService:
             self._to_domain(record)
             for record in notification_records
         )
+
+    async def count_for_pairs(
+        self,
+        *,
+        user_id: UUID,
+        pairs: Sequence[tuple[UUID, UUID]],
+    ) -> int:
+        """Count existing notifications for the supplied rule-alert pairs."""
+
+        if not pairs:
+            return 0
+
+        conditions = [
+            (
+                WatchlistNotificationRecord.alert_rule_id == rule_id,
+                WatchlistNotificationRecord.alert_id == alert_id,
+            )
+            for rule_id, alert_id in pairs
+        ]
+
+        result = await self.session.scalar(
+            select(func.count(WatchlistNotificationRecord.id)).where(
+                WatchlistNotificationRecord.user_id == user_id,
+                or_(
+                    *(
+                        condition[0] & condition[1]
+                        for condition in conditions
+                    )
+                ),
+            ),
+        )
+
+        return int(result or 0)
 
     async def list_for_user(
         self,
@@ -181,8 +214,17 @@ class WatchlistNotificationPersistenceService:
             select(WatchlistNotificationRecord)
             .where(
                 WatchlistNotificationRecord.user_id == user_id,
-                *[condition[0] & condition[1] for condition in conditions],
+                or_(
+                    *(
+                        condition[0] & condition[1]
+                        for condition in conditions
+                    )
+                ),
             )
+            .order_by(
+                WatchlistNotificationRecord.created_at.asc(),
+                WatchlistNotificationRecord.id.asc(),
+            ),
         )
 
         return tuple(result.scalars().all())
