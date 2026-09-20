@@ -193,8 +193,7 @@ class ResearchContextService:
         if terms:
             pattern = "%" + " ".join(terms[:3]) + "%"
             statement = statement.where(
-                NewsArticle.title.ilike(pattern)
-                | NewsArticle.summary.ilike(pattern),
+                NewsArticle.title.ilike(pattern) | NewsArticle.summary.ilike(pattern),
             )
 
         result = await self.session.execute(statement)
@@ -239,8 +238,7 @@ class ResearchContextService:
         elif symbols or terms:
             pattern = "%" + " ".join(terms[:3]) + "%"
             statement = statement.where(
-                EventRecord.title.ilike(pattern)
-                | EventRecord.summary.ilike(pattern),
+                EventRecord.title.ilike(pattern) | EventRecord.summary.ilike(pattern),
             )
 
         result = await self.session.execute(statement)
@@ -508,12 +506,8 @@ class ResearchContextService:
                 free_cash_flow=str(record.free_cash_flow)
                 if record.free_cash_flow is not None
                 else None,
-                pe_ratio=str(record.pe_ratio)
-                if record.pe_ratio is not None
-                else None,
-                ps_ratio=str(record.ps_ratio)
-                if record.ps_ratio is not None
-                else None,
+                pe_ratio=str(record.pe_ratio) if record.pe_ratio is not None else None,
+                ps_ratio=str(record.ps_ratio) if record.ps_ratio is not None else None,
                 ev_to_ebitda=str(record.ev_to_ebitda)
                 if record.ev_to_ebitda is not None
                 else None,
