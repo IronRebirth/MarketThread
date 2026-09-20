@@ -12,6 +12,9 @@ from app.db.models.market_bar import MarketBar
 from app.db.models.market_data import MarketQuote
 from app.db.models.market_impact import MarketImpactRecord
 from app.db.models.news import NewsArticle, NewsSource
+from app.db.models.notification_email_delivery import (
+    NotificationEmailDeliveryRecord,
+)
 from app.db.models.portfolio import (
     PortfolioPositionRecord,
     PortfolioRecord,
@@ -42,6 +45,7 @@ __all__ = [
     "MarketQuote",
     "NewsArticle",
     "NewsSource",
+    "NotificationEmailDeliveryRecord",
     "PortfolioPositionHistoryRecord",
     "PortfolioPositionRecord",
     "PortfolioRecord",
