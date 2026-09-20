@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/auth-provider";
+import { AuthRequiredPrompt } from "../auth/auth-required-prompt";
 import { PortfolioCashFlowPanel } from "./portfolio-cash-flow-panel";
 import { PortfolioExposurePanel } from "./portfolio-exposure-panel";
 import { PortfolioPerformancePanel } from "./portfolio-performance-panel";
