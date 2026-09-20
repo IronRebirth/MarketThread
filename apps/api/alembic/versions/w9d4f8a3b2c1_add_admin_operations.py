@@ -32,10 +32,22 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_admin_audit_logs_actor_user_id", "admin_audit_logs", ["actor_user_id"])
+    op.create_index(
+        "ix_admin_audit_logs_actor_user_id",
+        "admin_audit_logs",
+        ["actor_user_id"],
+    )
     op.create_index("ix_admin_audit_logs_action", "admin_audit_logs", ["action"])
-    op.create_index("ix_admin_audit_logs_resource_type", "admin_audit_logs", ["resource_type"])
-    op.create_index("ix_admin_audit_logs_created_at", "admin_audit_logs", ["created_at"])
+    op.create_index(
+        "ix_admin_audit_logs_resource_type",
+        "admin_audit_logs",
+        ["resource_type"],
+    )
+    op.create_index(
+        "ix_admin_audit_logs_created_at",
+        "admin_audit_logs",
+        ["created_at"],
+    )
 
 
 def downgrade() -> None:
