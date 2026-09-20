@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -22,8 +23,13 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
 
-    jwt_secret_key: str = "change-me"
+    jwt_secret_key: str = Field(
+        default="marketthread-development-secret-key-32",
+        min_length=32,
+    )
     jwt_algorithm: str = "HS256"
+
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
 
     market_data_api_key: str | None = None
     market_data_base_url: str | None = None
@@ -46,6 +52,13 @@ class Settings(BaseSettings):
 
     sentry_dsn: str | None = None
     admin_emails: str = ""
+
+    @field_validator("jwt_algorithm")
+    @classmethod
+    def validate_jwt_algorithm(cls, value: str) -> str:
+        if value != "HS256":
+            raise ValueError("JWT_ALGORITHM must be HS256.")
+        return value
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
