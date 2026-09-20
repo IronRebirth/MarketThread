@@ -10,8 +10,8 @@ def test_jwt_secret_requires_at_least_32_characters() -> None:
         Settings(jwt_secret_key="too-short")
 
 
-def test_security_headers_are_present(client: AsyncClient) -> None:
-    response = client.get("/health")
+async def test_security_headers_are_present(client: AsyncClient) -> None:
+    response = await client.get("/health")
 
     assert response.status_code == 200
     assert response.headers["X-Content-Type-Options"] == "nosniff"
