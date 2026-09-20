@@ -1,6 +1,9 @@
 import { fetchCompanyImpacts, type CompanyImpact } from "./company-impacts-api";
 import { fetchMarketEvents, type MarketEvent } from "./events-api";
-import { fetchRecommendations, type Recommendation } from "./recommendations-api";
+import {
+  fetchRecommendations,
+  type Recommendation,
+} from "./recommendations-api";
 import { fetchMarketSignals, type MarketSignal } from "./signals-api";
 import { authenticatedFetch } from "./auth-api";
 
@@ -122,23 +125,6 @@ async function authenticatedJson<T>(
   return (await response.json()) as T;
 }
 
-async function getJson<T>(
-  input: RequestInfo | URL,
-): Promise<T> {
-  const response = await fetch(input, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new StockResearchApiError(
-      response.status,
-      await readErrorMessage(response),
-    );
-  }
-
-  return (await response.json()) as T;
-}
-
 export async function fetchStockResearch(
   symbol: string,
   lookbackDays = 365,
@@ -149,7 +135,11 @@ export async function fetchStockResearch(
     throw new StockResearchApiError(422, "Enter a stock symbol.");
   }
 
-  if (!Number.isInteger(lookbackDays) || lookbackDays < 30 || lookbackDays > 3650) {
+  if (
+    !Number.isInteger(lookbackDays) ||
+    lookbackDays < 30 ||
+    lookbackDays > 3650
+  ) {
     throw new StockResearchApiError(
       422,
       "The research lookback must be between 30 and 3650 days.",
@@ -169,44 +159,51 @@ export async function fetchStockResearch(
   const startIso = start.toISOString();
   const endIso = end.toISOString();
 
-  const [quoteResult, quoteQualityResult, barsResult, historicalQualityResult, impactsResult, signalsResult, recommendationsResult] =
-    await Promise.allSettled([
-      authenticatedJson<StockResearchQuote>(
-        `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
-          normalizedSymbol,
-        )}/quote`,
-      ),
-      authenticatedJson<StockResearchQuoteQuality>(
-        `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
-          normalizedSymbol,
-        )}/quote/quality?maximum_age_seconds=900`,
-      ),
-      authenticatedJson<StockResearchBar[]>(
-        `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
-          normalizedSymbol,
-        )}/bars?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(
-          endIso,
-        )}`,
-      ),
-      authenticatedJson<StockResearchHistoricalQuality>(
-        `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
-          normalizedSymbol,
-        )}/bars/quality?start=${encodeURIComponent(
-          startIso,
-        )}&end=${encodeURIComponent(
-          endIso,
-        )}&expected_interval_seconds=86400&minimum_coverage=0.9`,
-      ),
-      fetchCompanyImpacts({
-        ticker: normalizedSymbol,
-        limit: 100,
-      }),
-      fetchMarketSignals(500),
-      fetchRecommendations({
-        ticker: normalizedSymbol,
-        limit: 100,
-      }),
-    ]);
+  const [
+    quoteResult,
+    quoteQualityResult,
+    barsResult,
+    historicalQualityResult,
+    impactsResult,
+    signalsResult,
+    recommendationsResult,
+  ] = await Promise.allSettled([
+    authenticatedJson<StockResearchQuote>(
+      `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
+        normalizedSymbol,
+      )}/quote`,
+    ),
+    authenticatedJson<StockResearchQuoteQuality>(
+      `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
+        normalizedSymbol,
+      )}/quote/quality?maximum_age_seconds=900`,
+    ),
+    authenticatedJson<StockResearchBar[]>(
+      `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
+        normalizedSymbol,
+      )}/bars?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(
+        endIso,
+      )}`,
+    ),
+    authenticatedJson<StockResearchHistoricalQuality>(
+      `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
+        normalizedSymbol,
+      )}/bars/quality?start=${encodeURIComponent(
+        startIso,
+      )}&end=${encodeURIComponent(
+        endIso,
+      )}&expected_interval_seconds=86400&minimum_coverage=0.9`,
+    ),
+    fetchCompanyImpacts({
+      ticker: normalizedSymbol,
+      limit: 100,
+    }),
+    fetchMarketSignals(500),
+    fetchRecommendations({
+      ticker: normalizedSymbol,
+      limit: 100,
+    }),
+  ]);
 
   const quote =
     quoteResult.status === "fulfilled" ? quoteResult.value : null;
@@ -244,18 +241,15 @@ export async function fetchStockResearch(
       signal.ticker?.trim().toUpperCase() === normalizedSymbol,
   );
 
-  const requiredFailures = [
-    quoteResult,
-    barsResult,
-  ].filter((result) => result.status === "rejected");
+  const requiredFailures = [quoteResult, barsResult].filter(
+    (result) => result.status === "rejected",
+  );
 
   if (requiredFailures.length === 2 && !quote && bars.length === 0) {
     const reason = requiredFailures[0].reason;
 
     throw new StockResearchApiError(
-      reason instanceof StockResearchApiError
-        ? reason.status
-        : 503,
+      reason instanceof StockResearchApiError ? reason.status : 503,
       reason instanceof Error
         ? reason.message
         : "Market data is currently unavailable.",
