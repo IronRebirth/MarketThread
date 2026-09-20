@@ -127,3 +127,28 @@ class MarketDataRepository:
             grouped[bar.instrument_id].append(bar)
 
         return grouped
+
+
+class FundamentalRepository:
+    """Read persisted fundamental snapshots from PostgreSQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get_latest(
+        self,
+        instrument_id: UUID,
+    ):
+        from app.db.models.fundamental_snapshot import FundamentalSnapshot
+
+        result = await self.session.execute(
+            select(FundamentalSnapshot)
+            .where(FundamentalSnapshot.instrument_id == instrument_id)
+            .order_by(
+                FundamentalSnapshot.period_end.desc(),
+                FundamentalSnapshot.created_at.desc(),
+            )
+            .limit(1),
+        )
+
+        return result.scalar_one_or_none()
