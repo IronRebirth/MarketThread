@@ -1,18 +1,19 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import cast, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.company_impact import CompanyImpactRecord
+from app.db.models.event import EventRecord
 from app.db.models.fundamental_snapshot import FundamentalSnapshot
 from app.db.models.instrument import Instrument
-from app.db.models.news import NewsArticle, NewsSource
-from app.db.models.event import EventRecord
-from app.db.models.company_impact import CompanyImpactRecord
 from app.db.models.market_impact import MarketImpactRecord
-from app.db.models.signal import SignalRecord
-from app.db.models.recommendation import RecommendationRecord
+from app.db.models.news import NewsArticle, NewsSource
 from app.db.models.portfolio import PortfolioRecord
+from app.db.models.recommendation import RecommendationRecord
+from app.db.models.signal import SignalRecord
 from app.research.models import (
     ResearchArticle,
     ResearchCompanyImpact,
@@ -150,6 +151,7 @@ class ResearchContextService:
         limit: int,
     ) -> list[ResearchInstrument]:
         statement = select(Instrument).where(Instrument.is_active.is_(True))
+
         if terms:
             statement = statement.where(
                 or_(
@@ -225,7 +227,7 @@ class ResearchContextService:
 
         if article_ids:
             statement = statement.where(
-                EventRecord.source_article_ids.op("?|")(
+                cast(EventRecord.source_article_ids, JSONB).op("?|")(
                     [str(article_id) for article_id in article_ids],
                 ),
             )
@@ -407,12 +409,17 @@ class ResearchContextService:
         if not signal_ids:
             return []
 
-        statement = select(RecommendationRecord).where(
-            RecommendationRecord.signal_id.in_(signal_ids),
-            RecommendationRecord.created_at <= query.as_of,
-        ).order_by(
-            RecommendationRecord.created_at.desc(),
-        ).limit(query.limit)
+        statement = (
+            select(RecommendationRecord)
+            .where(
+                RecommendationRecord.signal_id.in_(signal_ids),
+                RecommendationRecord.created_at <= query.as_of,
+            )
+            .order_by(
+                RecommendationRecord.created_at.desc(),
+            )
+            .limit(query.limit)
+        )
 
         result = await self.session.execute(statement)
 
