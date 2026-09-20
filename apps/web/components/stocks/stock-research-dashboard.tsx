@@ -483,12 +483,7 @@ export function StockResearchDashboard({
         </ResearchList>
       </section>
 
-      <Card
-        title="Fundamental analysis"
-        description="Company fundamentals are intentionally not synthesized when no persisted fundamental-data source exists."
-      >
-        <Unavailable text="Fundamental metrics are not currently available in the MarketThread persisted data model. This section will remain explicit until a reliable fundamentals provider and persistence layer are implemented." />
-      </Card>
+      <FundamentalAnalysis fundamentals={data.fundamentals} />
 
       <Card title="Research interpretation" description="How to read this page.">
         <div className="grid gap-4 md:grid-cols-3">
@@ -507,6 +502,74 @@ export function StockResearchDashboard({
         </div>
       </Card>
     </div>
+  );
+}
+
+function FundamentalAnalysis({
+  fundamentals,
+}: {
+  fundamentals: StockResearchData["fundamentals"];
+}) {
+  if (!fundamentals) {
+    return (
+      <Card
+        title="Fundamental analysis"
+        description="Fundamentals are shown only when a persisted provider-backed snapshot is available."
+      >
+        <Unavailable text="Fundamental metrics are currently unavailable for this instrument. MarketThread does not substitute estimates or fabricated values." />
+      </Card>
+    );
+  }
+
+  const metrics = [
+    ["Revenue growth", fundamentals.revenue_growth, true],
+    ["Earnings growth", fundamentals.earnings_growth, true],
+    ["Gross margin", fundamentals.gross_margin, true],
+    ["Operating margin", fundamentals.operating_margin, true],
+    ["Net margin", fundamentals.net_margin, true],
+    ["ROE", fundamentals.roe, true],
+    ["ROIC", fundamentals.roic, true],
+    ["Debt / equity", fundamentals.debt_to_equity, false],
+    ["Debt / EBITDA", fundamentals.debt_to_ebitda, false],
+    ["Operating cash flow", fundamentals.operating_cash_flow, false],
+    ["Free cash flow", fundamentals.free_cash_flow, false],
+    ["P/E", fundamentals.pe_ratio, false],
+    ["P/S", fundamentals.ps_ratio, false],
+    ["EV / EBITDA", fundamentals.ev_to_ebitda, false],
+    ["Dividend yield", fundamentals.dividend_yield, true],
+  ] as const;
+
+  return (
+    <Card
+      title="Fundamental analysis"
+      description={`Persisted provider snapshot for ${fundamentals.period_end} · source ${fundamentals.source}`}
+    >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {metrics.map(([name, value, isPercent]) => (
+          <div
+            key={name}
+            className="rounded-md border border-border bg-surface-subtle p-4"
+          >
+            <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
+              {name}
+            </p>
+            <p className="mt-2 text-lg font-semibold text-text-primary">
+              {value === null
+                ? "Unavailable"
+                : isPercent
+                  ? percent(Number(value))
+                  : price(value)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-5 border-t border-border pt-4 text-xs leading-5 text-text-muted">
+        Fundamental values are provider-supplied observations for the stated
+        reporting period. Missing metrics remain unavailable rather than being
+        inferred.
+      </p>
+    </Card>
   );
 }
 
