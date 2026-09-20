@@ -36,9 +36,9 @@ class NotificationEmailService:
 
         port = self.settings.smtp_port
 
-        if port is None or port < 1 or port > 65535:
+        if port < 1 or port > 65535:
             raise EmailDeliveryConfigurationError(
-                "SMTP_PORT must be configured between 1 and 65535.",
+                "SMTP_PORT must be between 1 and 65535.",
             )
 
         from_email = self.settings.smtp_from_email
@@ -58,8 +58,7 @@ class NotificationEmailService:
         message["From"] = from_email
         message["To"] = recipient_email
         message.set_content(
-            "
-".join(
+            "\n".join(
                 (
                     "MarketThread watchlist notification",
                     "",
