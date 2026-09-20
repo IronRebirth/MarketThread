@@ -1,14 +1,5 @@
 from collections.abc import Iterable
-from dataclasses import dataclass
 from threading import Lock
-from time import monotonic
-
-
-@dataclass(frozen=True)
-class MetricSnapshot:
-    name: str
-    labels: tuple[tuple[str, str], ...]
-    value: float
 
 
 class _Counter:
@@ -19,7 +10,8 @@ class _Counter:
         self.values: dict[tuple[str, ...], float] = {}
 
     def inc(self, values: tuple[str, ...], amount: float = 1.0) -> None:
-        self.values[values] = self.values.get(values, 0.0) + amount
+        with _lock:
+            self.values[values] = self.values.get(values, 0.0) + amount
 
 
 class _Histogram:
@@ -39,7 +31,8 @@ class _Histogram:
         self.totals: dict[tuple[str, ...], tuple[float, int]] = {}
 
     def observe(self, values: tuple[str, ...], amount: float) -> None:
-        self.values.setdefault(values, []).append(amount)
+        with _lock:
+            self.values.setdefault(values, []).append(amount)
         bucket_counts = self.counts.setdefault(
             values,
             [0] * (len(self.buckets) + 1),
@@ -104,11 +97,6 @@ REQUEST_DURATION_SECONDS = histogram(
     "HTTP request duration in seconds.",
     ("method", "route"),
     (0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
-)
-ACTIVE_REQUESTS = counter(
-    "marketthread_http_requests_active_total",
-    "Cumulative request lifecycle observations.",
-    ("method", "route"),
 )
 JOB_STARTED_TOTAL = counter(
     "marketthread_jobs_started_total",
