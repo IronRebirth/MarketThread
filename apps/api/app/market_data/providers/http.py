@@ -7,6 +7,7 @@ import httpx
 
 from app.market_data.models import (
     Bar,
+    Fundamentals,
     Instrument,
     MarketDataProviderHealth,
     Quote,
@@ -228,3 +229,24 @@ class HttpMarketDataProvider:
             ) from exc
 
         return bars
+
+    async def get_fundamentals(
+        self,
+        instrument_id: UUID,
+    ) -> Fundamentals | None:
+        """Retrieve and normalize the latest fundamentals snapshot."""
+
+        try:
+            payload = await self._get(
+                "/v1/fundamentals",
+                params={"instrument_id": str(instrument_id)},
+            )
+        except MarketDataNotFoundError:
+            return None
+
+        try:
+            return Fundamentals.model_validate(payload)
+        except ValueError as exc:
+            raise MarketDataInvalidResponseError(
+                "Provider returned invalid fundamentals.",
+            ) from exc
