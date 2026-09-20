@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    max_request_body_bytes: int = Field(default=1_048_576, gt=0, le=10_485_760)
 
     database_url: str = (
         "postgresql+psycopg://marketthread:change-me@localhost:5433/marketthread"
