@@ -86,8 +86,7 @@ class ResearchAssistantService:
             raise LLMResponseError(str(exc)) from exc
 
         references_by_id = {
-            reference.reference_id: reference
-            for reference in context.source_references
+            reference.reference_id: reference for reference in context.source_references
         }
 
         citations: list[ResearchSourceReference] = []
