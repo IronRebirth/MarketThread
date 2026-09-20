@@ -8,6 +8,8 @@ from app.core.config import get_settings
 
 password_hash = PasswordHash.recommended()
 
+ACCESS_TOKEN_TYPE = "access"
+
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password."""
@@ -23,16 +25,22 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 def create_access_token(
     subject: str,
+    session_version: int,
     expires_delta: timedelta,
 ) -> str:
-    """Create a signed JWT access token."""
+    """Create a signed JWT access token with explicit authentication claims."""
 
     settings = get_settings()
-    expires_at = datetime.now(UTC) + expires_delta
+    now = datetime.now(UTC)
+    expires_at = now + expires_delta
 
     payload = {
         "sub": subject,
+        "iat": now,
         "exp": expires_at,
+        "iss": settings.jwt_issuer,
+        "typ": ACCESS_TOKEN_TYPE,
+        "sv": session_version,
     }
 
     return jwt.encode(
@@ -51,4 +59,15 @@ def decode_access_token(token: str) -> dict[str, Any]:
         token,
         settings.jwt_secret_key,
         algorithms=[settings.jwt_algorithm],
+        issuer=settings.jwt_issuer,
+        options={
+            "require": [
+                "sub",
+                "iat",
+                "exp",
+                "iss",
+                "typ",
+                "sv",
+            ],
+        },
     )
