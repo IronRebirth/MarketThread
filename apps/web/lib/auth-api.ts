@@ -2,6 +2,7 @@ export type User = {
   id: string;
   email: string;
   is_active: boolean;
+  role: "user" | "admin";
 };
 
 export type TokenResponse = {
