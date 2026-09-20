@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-
 import { useAuth } from "../auth/auth-provider";
 import { PortfolioCashFlowPanel } from "./portfolio-cash-flow-panel";
 import { PortfolioExposurePanel } from "./portfolio-exposure-panel";
@@ -149,7 +147,6 @@ function formatCostBasisSummary(
 }
 
 export function PortfolioDashboard() {
-  const router = useRouter();
   const { user, isLoading: isAuthLoading, isAuthenticated } =
     useAuth();
 
@@ -212,14 +209,6 @@ export function PortfolioDashboard() {
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<
     string | null
   >(null);
-
-  useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated) {
-      router.replace(
-        `/login?next=${encodeURIComponent("/portfolio")}`,
-      );
-    }
-  }, [isAuthLoading, isAuthenticated, router]);
 
   const loadPortfolios = useCallback(async () => {
     setIsLoading(true);
@@ -634,16 +623,6 @@ export function PortfolioDashboard() {
       <div className="flex min-h-80 items-center justify-center">
         <p className="text-sm text-text-secondary">
           Restoring your MarketThread session…
-        </p>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex min-h-80 items-center justify-center">
-        <p className="text-sm text-text-secondary">
-          Redirecting to sign in…
         </p>
       </div>
     );

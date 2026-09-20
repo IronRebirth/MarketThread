@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-
 import { useAuth } from "../auth/auth-provider";
 import {
   fetchInstrument,
@@ -63,7 +61,6 @@ function formatLabel(value: string) {
 }
 
 export function WatchlistDashboard() {
-  const router = useRouter();
   const { user, isLoading: isAuthLoading, isAuthenticated } =
     useAuth();
 
@@ -104,14 +101,6 @@ export function WatchlistDashboard() {
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<
     string | null
   >(null);
-
-  useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated) {
-      const next = encodeURIComponent("/watchlists");
-
-      router.replace(`/login?next=${next}`);
-    }
-  }, [isAuthLoading, isAuthenticated, router]);
 
   const loadWatchlists = useCallback(
     async (preferredWatchlistId?: string | null) => {
@@ -458,16 +447,6 @@ export function WatchlistDashboard() {
       <div className="flex min-h-80 items-center justify-center">
         <p className="text-sm text-text-secondary">
           Restoring your MarketThread session…
-        </p>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex min-h-80 items-center justify-center">
-        <p className="text-sm text-text-secondary">
-          Redirecting to sign in…
         </p>
       </div>
     );
