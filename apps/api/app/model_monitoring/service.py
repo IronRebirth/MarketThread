@@ -39,8 +39,7 @@ class ModelMonitoringService:
                 request.current_features[name],
             )
             for name in sorted(
-                set(request.reference_features)
-                & set(request.current_features),
+                set(request.reference_features) & set(request.current_features),
             )
         )
         market_regime = self._market_regime(request.market_returns)
@@ -85,9 +84,7 @@ class ModelMonitoringService:
         probabilities: tuple[float, ...],
         labels: tuple[int, ...],
     ) -> PerformanceMetrics:
-        predicted = tuple(
-            int(probability >= 0.5) for probability in probabilities
-        )
+        predicted = tuple(int(probability >= 0.5) for probability in probabilities)
 
         return PerformanceMetrics(
             sample_count=len(labels),
@@ -98,8 +95,7 @@ class ModelMonitoringService:
             / len(labels),
             positive_rate=mean(labels),
             average_confidence=mean(
-                max(probability, 1 - probability)
-                for probability in probabilities
+                max(probability, 1 - probability) for probability in probabilities
             ),
         )
 
