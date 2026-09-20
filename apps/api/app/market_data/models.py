@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -46,6 +46,31 @@ class Bar(BaseModel):
     low: Decimal
     close: Decimal
     volume: Decimal | None = None
+    source: str = Field(min_length=1, max_length=64)
+
+
+class Fundamentals(BaseModel):
+    """Normalized fundamental metrics for one reporting period."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instrument_id: UUID
+    period_end: date
+    revenue_growth: Decimal | None = None
+    earnings_growth: Decimal | None = None
+    gross_margin: Decimal | None = None
+    operating_margin: Decimal | None = None
+    net_margin: Decimal | None = None
+    roe: Decimal | None = None
+    roic: Decimal | None = None
+    debt_to_equity: Decimal | None = None
+    debt_to_ebitda: Decimal | None = None
+    operating_cash_flow: Decimal | None = None
+    free_cash_flow: Decimal | None = None
+    pe_ratio: Decimal | None = None
+    ps_ratio: Decimal | None = None
+    ev_to_ebitda: Decimal | None = None
+    dividend_yield: Decimal | None = None
     source: str = Field(min_length=1, max_length=64)
 
 
@@ -111,3 +136,14 @@ class MarketDataIngestionResult(BaseModel):
     bars_persisted: int
     quote_received: bool
     quote_persisted: bool
+
+
+class FundamentalsIngestionResult(BaseModel):
+    """Summary of a completed fundamental-data ingestion operation."""
+
+    instrument_id: UUID
+    symbol: str
+    exchange: str
+    period_end: date
+    source: str
+    persisted: bool
