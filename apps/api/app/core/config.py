@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     news_api_base_url: str = "https://newsapi.org"
 
     llm_api_key: str | None = None
+    llm_api_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-5.6-luna"
+    llm_timeout: float = 30.0
 
     smtp_host: str | None = None
     smtp_port: int = 587
