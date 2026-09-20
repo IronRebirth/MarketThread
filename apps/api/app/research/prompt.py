@@ -1,7 +1,7 @@
 import json
 
-from app.research.models import ResearchContext
 from app.research.assistant_models import GeneratedResearchAnswer
+from app.research.models import ResearchContext
 
 
 SYSTEM_PROMPT = """You are the MarketThread research assistant.
@@ -50,9 +50,7 @@ def build_research_prompt(
             "instruments": [
                 item.model_dump(mode="json") for item in context.instruments
             ],
-            "articles": [
-                item.model_dump(mode="json") for item in context.articles
-            ],
+            "articles": [item.model_dump(mode="json") for item in context.articles],
             "events": [item.model_dump(mode="json") for item in context.events],
             "company_impacts": [
                 item.model_dump(mode="json") for item in context.company_impacts
