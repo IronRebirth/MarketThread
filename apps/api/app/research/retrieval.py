@@ -227,8 +227,13 @@ class ResearchContextService:
 
         if article_ids:
             statement = statement.where(
-                cast(EventRecord.source_article_ids, JSONB).op("?|")(
-                    [str(article_id) for article_id in article_ids],
+                or_(
+                    *[
+                        cast(EventRecord.source_article_ids, JSONB).op("@>")(
+                            [str(article_id)],
+                        )
+                        for article_id in article_ids
+                    ],
                 ),
             )
         elif symbols or terms:
