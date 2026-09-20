@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.research.models import ResearchSourceReference
@@ -41,4 +42,3 @@ class ResearchAnswer(BaseModel):
     model: str
     generated_at: datetime
     grounded: bool = True
-
