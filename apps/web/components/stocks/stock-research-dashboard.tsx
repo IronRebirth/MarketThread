@@ -485,6 +485,8 @@ export function StockResearchDashboard({
 
       <FundamentalAnalysis fundamentals={data.fundamentals} />
 
+      <EvidenceAnalysis evidence={data.evidence} />
+
       <Card title="Research interpretation" description="How to read this page.">
         <div className="grid gap-4 md:grid-cols-3">
           <Interpretation
@@ -501,6 +503,123 @@ export function StockResearchDashboard({
           />
         </div>
       </Card>
+    </div>
+  );
+}
+
+function EvidenceAnalysis({
+  evidence,
+}: {
+  evidence: StockResearchData["evidence"];
+}) {
+  return (
+    <Card
+      title="Evidence, risk & confidence"
+      description="Traceable evidence and analytical uncertainty from the persisted research chain."
+    >
+      <div className="grid gap-4 md:grid-cols-3">
+        <Metric
+          label="Evidence confidence"
+          value={percent(evidence.confidence)}
+        />
+        <Metric label="Interpretation risk" value={percent(evidence.risk_score)} />
+        <Metric
+          label="Source articles"
+          value={String(evidence.articles.length)}
+        />
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <EvidenceList
+          title="Supporting factors"
+          items={evidence.supporting_factors}
+          empty="No supporting factors were persisted for the selected research chain."
+        />
+        <EvidenceList
+          title="Contradicting factors"
+          items={evidence.contradicting_factors}
+          empty="No contradicting factors were persisted for the selected research chain."
+        />
+        <EvidenceList
+          title="Invalidation conditions"
+          items={evidence.invalidation_conditions}
+          empty="No invalidation conditions were persisted."
+        />
+        <EvidenceArticles articles={evidence.articles} />
+      </div>
+
+      <p className="mt-5 border-t border-border pt-4 text-xs leading-5 text-text-muted">
+        Confidence measures support for the analytical interpretation. Risk
+        measures uncertainty in that interpretation. Neither metric is a
+        probability of profit or a forecasted loss percentage.
+      </p>
+    </Card>
+  );
+}
+
+function EvidenceList({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: string[];
+  empty: string;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface-subtle p-4">
+      <p className="text-sm font-semibold text-text-primary">{title}</p>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm leading-6 text-text-muted">{empty}</p>
+      ) : (
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-text-secondary">
+          {items.map((item) => (
+            <li key={item} className="border-l-2 border-border pl-3">
+              {item}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function EvidenceArticles({
+  articles,
+}: {
+  articles: StockResearchData["evidence"]["articles"];
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface-subtle p-4">
+      <p className="text-sm font-semibold text-text-primary">
+        Source articles
+      </p>
+      {articles.length === 0 ? (
+        <p className="mt-3 text-sm leading-6 text-text-muted">
+          No source articles could be resolved from the persisted evidence
+          identifiers.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {articles.map((article) => (
+            <a
+              key={article.article_id}
+              href={article.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-md border border-border bg-surface p-3 hover:border-brand"
+            >
+              <p className="text-sm font-medium text-text-primary">
+                {article.title}
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                {article.source_name} · {article.source_domain} ·{" "}
+                {dateTime(article.published_at)}
+              </p>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
