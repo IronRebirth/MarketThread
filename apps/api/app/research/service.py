@@ -2,10 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from app.core.config import get_settings
-from app.research.assistant_models import (
-    ResearchAnswer,
-    ResearchAnswerRequest,
-)
+from app.research.assistant_models import ResearchAnswer, ResearchAnswerRequest
 from app.research.llm import (
     LLMConfigurationError,
     LLMProvider,
@@ -13,7 +10,11 @@ from app.research.llm import (
     OpenAIResponsesProvider,
 )
 from app.research.models import ResearchSourceReference
-from app.research.prompt import SYSTEM_PROMPT, build_research_prompt, parse_generated_answer
+from app.research.prompt import (
+    SYSTEM_PROMPT,
+    build_research_prompt,
+    parse_generated_answer,
+)
 from app.research.retrieval import ResearchContextService
 
 
@@ -114,8 +115,7 @@ class ResearchAssistantService:
             answer=generated.answer,
             key_points=generated.key_points,
             explanation=generated.explanation,
-            uncertainty=generated.uncertainty
-            or context.limitations,
+            uncertainty=generated.uncertainty or context.limitations,
             citations=tuple(citations),
             model=model_name,
             generated_at=datetime.now(UTC),
