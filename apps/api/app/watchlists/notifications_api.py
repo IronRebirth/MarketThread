@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -13,9 +12,7 @@ from app.watchlists.alert_rule_persistence import (
     WatchlistAlertRulePersistenceService,
 )
 from app.watchlists.alerts import WatchlistAlertService
-from app.watchlists.notification_models import (
-    WatchlistNotification,
-)
+from app.watchlists.notification_models import WatchlistNotification
 from app.watchlists.notification_persistence import (
     WatchlistNotificationNotFound,
     WatchlistNotificationPersistenceService,
@@ -97,34 +94,26 @@ async def sync_notifications(
 
         matched_alert_count += len({alert.alert_id for _, alert in pairs})
 
-        existing_before = await notification_persistence.list_for_user(
-            user_id=current_user.id,
-            limit=100,
+        pair_ids = tuple(
+            (rule.alert_rule_id, alert.alert_id)
+            for rule, alert in pairs
         )
 
-        existing_keys_before = {
-            (item.alert_rule_id, item.alert_id)
-            for item in existing_before
-        }
+        existing_before = await notification_persistence.count_for_pairs(
+            user_id=current_user.id,
+            pairs=pair_ids,
+        )
 
         notifications = await notification_persistence.materialize(
             user_id=current_user.id,
             matches=pairs,
         )
 
-        created_count += sum(
-            (
-                notification.alert_rule_id,
-                notification.alert_id,
-            )
-            not in existing_keys_before
-            for notification in notifications
+        created_count += max(
+            0,
+            len(notifications) - existing_before,
         )
-
-    existing_count = max(
-        0,
-        matched_alert_count - created_count,
-    )
+        existing_count += existing_before
 
     return WatchlistNotificationSyncResponse(
         created_count=created_count,
@@ -210,4 +199,4 @@ def _to_response(
         confidence=notification.confidence,
         created_at=notification.created_at,
         read_at=notification.read_at,
-)
+    )
