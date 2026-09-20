@@ -5,7 +5,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from .logging import configure_logging
 from .metrics import (
     REQUEST_DURATION_SECONDS,
     REQUEST_ERRORS_TOTAL,
@@ -27,7 +26,9 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         started = perf_counter()
-        trace = parse_traceparent(request.headers.get("traceparent")) or generate_trace()
+        trace = parse_traceparent(
+            request.headers.get("traceparent"),
+        ) or generate_trace()
         token = set_current_trace(trace)
         response: Response | None = None
         status_code = 500

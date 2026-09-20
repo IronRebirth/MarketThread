@@ -33,18 +33,19 @@ class _Histogram:
     def observe(self, values: tuple[str, ...], amount: float) -> None:
         with _lock:
             self.values.setdefault(values, []).append(amount)
-        bucket_counts = self.counts.setdefault(
-            values,
-            [0] * (len(self.buckets) + 1),
-        )
 
-        for index, bucket in enumerate(self.buckets):
-            if amount <= bucket:
-                bucket_counts[index] += 1
+            bucket_counts = self.counts.setdefault(
+                values,
+                [0] * (len(self.buckets) + 1),
+            )
 
-        bucket_counts[-1] += 1
-        total, count = self.totals.get(values, (0.0, 0))
-        self.totals[values] = (total + amount, count + 1)
+            for index, bucket in enumerate(self.buckets):
+                if amount <= bucket:
+                    bucket_counts[index] += 1
+
+            bucket_counts[-1] += 1
+            total, count = self.totals.get(values, (0.0, 0))
+            self.totals[values] = (total + amount, count + 1)
 
 
 _lock = Lock()
@@ -131,37 +132,45 @@ def render_prometheus() -> bytes:
         for metric in counters:
             lines.append(f"# HELP {metric.name} {metric.help_text}")
             lines.append(f"# TYPE {metric.name} counter")
+
             for label_values, value in sorted(metric.values.items()):
-                lines.append(
-                    f"{metric.name}{_render_labels(metric.labels, label_values)} {value}",
-                )
+                labels = _render_labels(metric.labels, label_values)
+                lines.append(f"{metric.name}{labels} {value}")
 
         for metric in histograms:
             lines.append(f"# HELP {metric.name} {metric.help_text}")
             lines.append(f"# TYPE {metric.name} histogram")
+
             for label_values in sorted(metric.counts):
                 counts = metric.counts[label_values]
+
                 for index, bucket in enumerate(metric.buckets):
                     labels = metric.labels + ("le",)
                     values = label_values + (str(bucket),)
+                    rendered_labels = _render_labels(labels, values)
                     lines.append(
-                        f"{metric.name}_bucket{_render_labels(labels, values)} "
+                        f"{metric.name}_bucket{rendered_labels} "
                         f"{counts[index]}",
                     )
 
-                total, count = metric.totals[label_values]
                 labels = metric.labels + ("le",)
                 values = label_values + ("+Inf",)
+                rendered_labels = _render_labels(labels, values)
                 lines.append(
-                    f"{metric.name}_bucket{_render_labels(labels, values)} {count}",
+                    f"{metric.name}_bucket{rendered_labels} "
+                    f"{counts[-1]}",
+                )
+
+                total, count = metric.totals[label_values]
+                rendered_labels = _render_labels(
+                    metric.labels,
+                    label_values,
                 )
                 lines.append(
-                    f"{metric.name}_sum{_render_labels(metric.labels, label_values)} "
-                    f"{total}",
+                    f"{metric.name}_sum{rendered_labels} {total}",
                 )
                 lines.append(
-                    f"{metric.name}_count{_render_labels(metric.labels, label_values)} "
-                    f"{count}",
+                    f"{metric.name}_count{rendered_labels} {count}",
                 )
 
     return ("\n".join(lines) + "\n").encode("utf-8")
@@ -174,8 +183,14 @@ def _render_labels(
     if not names:
         return ""
 
+    escaped_values = []
+    for value in values:
+        escaped_values.append(
+            value.replace("\\", "\\\\").replace('"', '\\"'),
+        )
+
     pairs = [
-        f'{name}="{value.replace(chr(92), chr(92) + chr(92)).replace(chr(34), chr(92) + chr(34))}"'
-        for name, value in zip(names, values, strict=True)
+        f'{name}="{value}"'
+        for name, value in zip(names, escaped_values, strict=True)
     ]
     return "{" + ",".join(pairs) + "}"
