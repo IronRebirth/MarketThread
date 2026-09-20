@@ -28,7 +28,12 @@ def upgrade() -> None:
         sa.Column("resource_type", sa.String(length=128), nullable=False),
         sa.Column("resource_id", sa.String(length=128), nullable=True),
         sa.Column("detail", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
