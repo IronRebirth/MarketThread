@@ -96,7 +96,11 @@ async def register(
         )
 
     settings = get_settings()
-    admin_emails = {item.strip().lower() for item in settings.admin_emails.split(",") if item.strip()}
+    admin_emails = {
+        item.strip().lower()
+        for item in settings.admin_emails.split(",")
+        if item.strip()
+    }
 
     user = User(
         email=email,
