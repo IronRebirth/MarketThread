@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,12 +43,6 @@ class ResearchAnswer(BaseModel):
     model: str
     generated_at: datetime
     grounded: bool = True
-
-
-def current_utc() -> datetime:
-    """Return the current timezone-aware UTC timestamp."""
-
-    return datetime.now(UTC)
 
 
 LimitAnnotation = Annotated[int, Field(ge=1, le=20)]
