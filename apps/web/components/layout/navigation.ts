@@ -9,6 +9,7 @@ export const primaryNavigation: NavigationItem[] = [
   { label: "News", href: "/news", description: "News and information affecting markets." },
   { label: "Events", href: "/events", description: "Important global events and market catalysts." },
   { label: "Companies", href: "/companies", description: "Company-level research and impact analysis." },
+  { label: "Stock Research", href: "/stocks", description: "Research price history, technical context, events, and signals." },
   { label: "Market Impact", href: "/market-impacts", description: "Economic transmission paths from events to companies." },
   { label: "Recommendations", href: "/recommendations", description: "Research recommendations derived from persisted signals." },
   { label: "Watchlists", href: "/watchlists", description: "Track companies, sectors, and market themes." },
