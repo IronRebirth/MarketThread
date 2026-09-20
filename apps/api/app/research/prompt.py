@@ -60,12 +60,9 @@ def build_research_prompt(
             "market_impacts": [
                 item.model_dump(mode="json") for item in context.market_impacts
             ],
-            "signals": [
-                item.model_dump(mode="json") for item in context.signals
-            ],
+            "signals": [item.model_dump(mode="json") for item in context.signals],
             "recommendations": [
-                item.model_dump(mode="json")
-                for item in context.recommendations
+                item.model_dump(mode="json") for item in context.recommendations
             ],
             "fundamentals": [
                 item.model_dump(mode="json") for item in context.fundamentals
