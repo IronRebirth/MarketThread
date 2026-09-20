@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 from app.research.assistant_models import GeneratedResearchAnswer
-from app.research.models import ResearchContext
+
+if TYPE_CHECKING:
+    from app.research.models import ResearchContext
 
 
 SYSTEM_PROMPT = """You are the MarketThread research assistant.
