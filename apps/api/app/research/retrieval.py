@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.fundamental_snapshot import FundamentalSnapshot
@@ -95,6 +95,7 @@ class ResearchContextService:
         portfolio_positions = await self._find_portfolio_positions(
             user_id,
             instrument_ids,
+            query.as_of,
         )
 
         references = self._build_references(
@@ -105,6 +106,7 @@ class ResearchContextService:
             signals,
             recommendations,
             fundamentals,
+            query.as_of,
         )
 
         limitations: list[str] = []
@@ -150,9 +152,13 @@ class ResearchContextService:
         statement = select(Instrument).where(Instrument.is_active.is_(True))
         if terms:
             statement = statement.where(
-                Instrument.symbol.ilike_any(list(terms))
-                if len(terms) == 1
-                else Instrument.symbol.ilike(f"%{terms[0]}%"),
+                or_(
+                    *[
+                        Instrument.symbol.ilike(f"%{term}%")
+                        | Instrument.name.ilike(f"%{term}%")
+                        for term in terms
+                    ],
+                ),
             )
 
         result = await self.session.execute(statement.limit(limit))
@@ -511,27 +517,83 @@ class ResearchContextService:
         self,
         user_id: UUID,
         instrument_ids: set[UUID],
+        as_of: datetime,
     ) -> list[ResearchPortfolioPosition]:
         if not instrument_ids:
             return []
 
-        result = await self.session.execute(
+        history_rank = (
+            func.row_number()
+            .over(
+                partition_by=PortfolioPositionRecord.instrument_id,
+                order_by=(
+                    PortfolioPositionRecord.created_at.desc(),
+                    PortfolioPositionRecord.id.desc(),
+                ),
+            )
+            .label("history_rank")
+        )
+
+        # The current position table has no effective timestamp. Use the
+        # persisted position history instead so point-in-time research does not
+        # silently expose a later portfolio state.
+        from app.db.models.portfolio_history import PortfolioPositionHistoryRecord
+
+        latest_rank = (
+            func.row_number()
+            .over(
+                partition_by=(
+                    PortfolioPositionHistoryRecord.portfolio_id,
+                    PortfolioPositionHistoryRecord.instrument_id,
+                ),
+                order_by=(
+                    PortfolioPositionHistoryRecord.recorded_at.desc(),
+                    PortfolioPositionHistoryRecord.sequence_id.desc(),
+                ),
+            )
+            .label("history_rank")
+        )
+
+        latest_history = (
             select(
+                PortfolioPositionHistoryRecord.sequence_id.label("sequence_id"),
+                latest_rank,
+            )
+            .join(
                 PortfolioRecord,
-                PortfolioPositionRecord,
-                Instrument,
-            )
-            .join(
-                PortfolioPositionRecord,
-                PortfolioPositionRecord.portfolio_id == PortfolioRecord.id,
-            )
-            .join(
-                Instrument,
-                Instrument.id == PortfolioPositionRecord.instrument_id,
+                PortfolioRecord.id == PortfolioPositionHistoryRecord.portfolio_id,
             )
             .where(
                 PortfolioRecord.user_id == user_id,
-                PortfolioPositionRecord.instrument_id.in_(instrument_ids),
+                PortfolioPositionHistoryRecord.instrument_id.in_(instrument_ids),
+                PortfolioPositionHistoryRecord.recorded_at <= as_of,
+            )
+            .subquery()
+        )
+
+        result = await self.session.execute(
+            select(
+                PortfolioRecord,
+                PortfolioPositionHistoryRecord,
+                Instrument,
+            )
+            .join(
+                PortfolioPositionHistoryRecord,
+                PortfolioPositionHistoryRecord.portfolio_id == PortfolioRecord.id,
+            )
+            .join(
+                Instrument,
+                Instrument.id == PortfolioPositionHistoryRecord.instrument_id,
+            )
+            .join(
+                latest_history,
+                latest_history.c.sequence_id
+                == PortfolioPositionHistoryRecord.sequence_id,
+            )
+            .where(
+                PortfolioRecord.user_id == user_id,
+                latest_history.c.history_rank == 1,
+                PortfolioPositionHistoryRecord.quantity > 0,
             ),
         )
 
@@ -557,6 +619,7 @@ class ResearchContextService:
         signals,
         recommendations,
         fundamentals,
+        query_as_of: datetime,
     ):
         references: list[ResearchSourceReference] = []
 
@@ -583,13 +646,15 @@ class ResearchContextService:
                 ),
             )
 
+        event_times = {event.event_id: event.first_seen_at for event in events}
+
         for impact in company_impacts:
             references.append(
                 ResearchSourceReference(
                     reference_id=f"company-impact:{impact.impact_id}",
                     source_type="company_impact",
                     source_record_id=impact.impact_id,
-                    observed_at=datetime.now(UTC),
+                    observed_at=event_times.get(impact.event_id, query_as_of),
                     title=impact.company_name,
                 ),
             )
@@ -600,7 +665,7 @@ class ResearchContextService:
                     reference_id=f"market-impact:{impact.market_impact_id}",
                     source_type="market_impact",
                     source_record_id=impact.market_impact_id,
-                    observed_at=datetime.now(UTC),
+                    observed_at=event_times.get(impact.event_id, query_as_of),
                     title=impact.company_name,
                 ),
             )
