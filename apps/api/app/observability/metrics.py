@@ -90,7 +90,7 @@ REQUESTS_TOTAL = counter(
 )
 REQUEST_ERRORS_TOTAL = counter(
     "marketthread_http_errors_total",
-    "Total HTTP 5xx responses and unhandled request exceptions.",
+    "Total 5xx responses and unhandled request exceptions.",
     ("method", "route"),
 )
 REQUEST_DURATION_SECONDS = histogram(
@@ -187,5 +187,8 @@ def _render_labels(
             value.replace("\\", "\\\\").replace('"', '\\"'),
         )
 
-    pairs = [f'{name}="{value}"' for name, value in zip(names, escaped_values, strict=True)]
+    pairs = []
+    for name, value in zip(names, escaped_values, strict=True):
+        pairs.append(f'{name}="{value}"')
+
     return "{" + ",".join(pairs) + "}"
