@@ -1,5 +1,6 @@
 """SQLAlchemy models for MarketThread."""
 
+from app.db.models.admin_audit_log import AdminAuditLogRecord
 from app.db.models.backtest import (
     BacktestEvaluation,
     BacktestFold,
@@ -35,6 +36,7 @@ from app.db.models.watchlist_alert_state import WatchlistAlertStateRecord
 from app.db.models.watchlist_notification import WatchlistNotificationRecord
 
 __all__ = [
+    "AdminAuditLogRecord",
     "BacktestEvaluation",
     "BacktestFold",
     "BacktestProvenance",
