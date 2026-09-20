@@ -628,6 +628,31 @@ export function PortfolioDashboard() {
     );
   }
 
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col gap-8">
+        <header className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="info">Portfolio</Badge>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-brand">MarketThread</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
+              Portfolio intelligence workspace
+            </h1>
+            <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
+              Maintain persisted holdings and inspect server-backed
+              valuation, historical performance, risk metrics,
+              exposure, and external cash-flow history with explicit
+              data-quality, currency, and accounting boundaries.
+            </p>
+          </div>
+        </header>
+        <AuthRequiredPrompt nextPath="/portfolio" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-4">
