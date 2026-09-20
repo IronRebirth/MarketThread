@@ -37,6 +37,7 @@ from app.recommendations.api import router as recommendations_router
 from app.research.api import router as research_router
 from app.research.assistant_api import router as research_assistant_router
 from app.security.middleware import SecurityHeadersMiddleware
+from app.security.request_limits import RequestSizeLimitMiddleware
 from app.signals.api import router as signals_router
 from app.watchlists.alert_rules_api import router as watchlist_alert_rules_router
 from app.watchlists.alerts_api import router as watchlist_alerts_router
@@ -53,6 +54,10 @@ app = FastAPI(
 )
 
 app.add_middleware(ObservabilityMiddleware)
+app.add_middleware(
+    RequestSizeLimitMiddleware,
+    max_body_bytes=settings.max_request_body_bytes,
+)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
