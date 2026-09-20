@@ -522,18 +522,6 @@ class ResearchContextService:
         if not instrument_ids:
             return []
 
-        history_rank = (
-            func.row_number()
-            .over(
-                partition_by=PortfolioPositionRecord.instrument_id,
-                order_by=(
-                    PortfolioPositionRecord.created_at.desc(),
-                    PortfolioPositionRecord.id.desc(),
-                ),
-            )
-            .label("history_rank")
-        )
-
         # The current position table has no effective timestamp. Use the
         # persisted position history instead so point-in-time research does not
         # silently expose a later portfolio state.
