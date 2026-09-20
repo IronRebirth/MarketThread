@@ -92,30 +92,28 @@ async def dispatch_email_notifications(
         limit=100,
     )
 
-    eligible_persistence = NotificationEmailDeliveryPersistenceService(
+    delivery_persistence = NotificationEmailDeliveryPersistenceService(
         session,
     )
-    eligible_notifications = await eligible_persistence.list_eligible(
-        user_id=current_user.id,
-        notification_ids=tuple(
-            notification.notification_id
-            for notification in notifications
-        ),
-        recipient_email=current_user.email,
-    )
-
     email_service = NotificationEmailService(get_settings())
 
+    eligible_count = 0
     sent_count = 0
-    skipped_count = len(notifications) - len(eligible_notifications)
+    skipped_count = 0
     failed_count = 0
 
-    for notification in eligible_notifications:
-        await eligible_persistence.ensure_delivery(
+    for notification in notifications:
+        delivery = await delivery_persistence.claim_for_send(
             user_id=current_user.id,
             notification=notification,
             recipient_email=current_user.email,
         )
+
+        if delivery is None:
+            skipped_count += 1
+            continue
+
+        eligible_count += 1
 
         try:
             email_service.send(
@@ -126,14 +124,14 @@ async def dispatch_email_notifications(
             EmailDeliveryConfigurationError,
             EmailDeliveryError,
         ) as exc:
-            await eligible_persistence.record_failure(
+            await delivery_persistence.record_failure(
                 user_id=current_user.id,
                 notification_id=notification.notification_id,
                 error_message=str(exc),
             )
             failed_count += 1
         else:
-            await eligible_persistence.record_success(
+            await delivery_persistence.record_success(
                 user_id=current_user.id,
                 notification_id=notification.notification_id,
             )
@@ -141,7 +139,7 @@ async def dispatch_email_notifications(
 
     return EmailNotificationDispatchResponse(
         enabled=True,
-        eligible_count=len(eligible_notifications),
+        eligible_count=eligible_count,
         sent_count=sent_count,
         skipped_count=skipped_count,
         failed_count=failed_count,
