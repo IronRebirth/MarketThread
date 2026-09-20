@@ -2,7 +2,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.notification_email_delivery import (
@@ -20,49 +21,6 @@ class NotificationEmailDeliveryPersistenceService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list_eligible(
-        self,
-        *,
-        user_id: UUID,
-        notification_ids: Sequence[UUID],
-        recipient_email: str,
-    ) -> tuple[WatchlistNotification, ...]:
-        """Return notifications not already successfully emailed."""
-
-        if not notification_ids:
-            return ()
-
-        result = await self.session.execute(
-            select(
-                WatchlistNotificationRecord,
-            )
-            .outerjoin(
-                NotificationEmailDeliveryRecord,
-                NotificationEmailDeliveryRecord.notification_id
-                == WatchlistNotificationRecord.id,
-            )
-            .where(
-                WatchlistNotificationRecord.user_id == user_id,
-                WatchlistNotificationRecord.id.in_(notification_ids),
-                (
-                    NotificationEmailDeliveryRecord.id.is_(None)
-                    | (
-                        NotificationEmailDeliveryRecord.status
-                        != NotificationEmailDeliveryStatus.SENT.value
-                    )
-                ),
-            )
-            .order_by(
-                WatchlistNotificationRecord.created_at.asc(),
-                WatchlistNotificationRecord.id.asc(),
-            ),
-        )
-
-        return tuple(
-            self._notification_to_domain(record)
-            for record in result.scalars().all()
-        )
-
     async def get_delivery(
         self,
         *,
@@ -72,9 +30,7 @@ class NotificationEmailDeliveryPersistenceService:
         """Return delivery state for an owned notification."""
 
         result = await self.session.execute(
-            select(
-                NotificationEmailDeliveryRecord,
-            )
+            select(NotificationEmailDeliveryRecord)
             .join(
                 WatchlistNotificationRecord,
                 WatchlistNotificationRecord.id
@@ -94,19 +50,17 @@ class NotificationEmailDeliveryPersistenceService:
 
         return self._delivery_to_domain(record)
 
-    async def ensure_delivery(
+    async def claim_for_send(
         self,
         *,
         user_id: UUID,
         notification: WatchlistNotification,
         recipient_email: str,
-    ) -> NotificationEmailDelivery:
-        """Create or return the delivery ledger for one notification."""
+    ) -> NotificationEmailDelivery | None:
+        """Lock one notification's delivery record and claim it for sending."""
 
-        result = await self.session.execute(
-            select(
-                NotificationEmailDeliveryRecord,
-            )
+        record_result = await self.session.execute(
+            select(NotificationEmailDeliveryRecord)
             .join(
                 WatchlistNotificationRecord,
                 WatchlistNotificationRecord.id
@@ -116,19 +70,50 @@ class NotificationEmailDeliveryPersistenceService:
                 WatchlistNotificationRecord.user_id == user_id,
                 NotificationEmailDeliveryRecord.notification_id
                 == notification.notification_id,
-            ),
+            )
+            .with_for_update(),
         )
 
-        record = result.scalar_one_or_none()
+        record = record_result.scalar_one_or_none()
 
         if record is None:
-            record = NotificationEmailDeliveryRecord(
-                notification_id=notification.notification_id,
-                recipient_email=recipient_email,
+            await self.session.execute(
+                insert(NotificationEmailDeliveryRecord)
+                .values(
+                    notification_id=notification.notification_id,
+                    recipient_email=recipient_email,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=["notification_id"],
+                ),
             )
-            self.session.add(record)
-            await self.session.flush()
-        elif record.recipient_email != recipient_email:
+
+            record_result = await self.session.execute(
+                select(NotificationEmailDeliveryRecord)
+                .join(
+                    WatchlistNotificationRecord,
+                    WatchlistNotificationRecord.id
+                    == NotificationEmailDeliveryRecord.notification_id,
+                )
+                .where(
+                    WatchlistNotificationRecord.user_id == user_id,
+                    NotificationEmailDeliveryRecord.notification_id
+                    == notification.notification_id,
+                )
+                .with_for_update(),
+            )
+
+            record = record_result.scalar_one_or_none()
+
+        if record is None:
+            await self.session.rollback()
+            return None
+
+        if record.status == NotificationEmailDeliveryStatus.SENT.value:
+            await self.session.rollback()
+            return None
+
+        if record.recipient_email != recipient_email:
             record.recipient_email = recipient_email
 
         return self._delivery_to_domain(record)
@@ -192,9 +177,7 @@ class NotificationEmailDeliveryPersistenceService:
         notification_id: UUID,
     ) -> NotificationEmailDeliveryRecord | None:
         result = await self.session.execute(
-            select(
-                NotificationEmailDeliveryRecord,
-            )
+            select(NotificationEmailDeliveryRecord)
             .join(
                 WatchlistNotificationRecord,
                 WatchlistNotificationRecord.id
@@ -202,9 +185,8 @@ class NotificationEmailDeliveryPersistenceService:
             )
             .where(
                 WatchlistNotificationRecord.user_id == user_id,
-                NotificationEmailDeliveryRecord.notification_id
-                == notification_id,
-            ),
+                NotificationEmailDeliveryRecord.notification_id == notification_id,
+            )
         )
 
         return result.scalar_one_or_none()
