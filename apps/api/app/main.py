@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.admin.api import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.market_data import router as market_data_router
 from app.backtesting.api import router as backtesting_router
@@ -58,6 +59,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(market_data_router)
 app.include_router(backtesting_router)
 app.include_router(news_router)
