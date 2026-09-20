@@ -1,8 +1,7 @@
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,8 +37,7 @@ class NotificationEmailDeliveryPersistenceService:
             )
             .where(
                 WatchlistNotificationRecord.user_id == user_id,
-                NotificationEmailDeliveryRecord.notification_id
-                == notification_id,
+                NotificationEmailDeliveryRecord.notification_id == notification_id,
             ),
         )
 
@@ -186,31 +184,10 @@ class NotificationEmailDeliveryPersistenceService:
             .where(
                 WatchlistNotificationRecord.user_id == user_id,
                 NotificationEmailDeliveryRecord.notification_id == notification_id,
-            )
+            ),
         )
 
         return result.scalar_one_or_none()
-
-    @staticmethod
-    def _notification_to_domain(
-        record: WatchlistNotificationRecord,
-    ) -> WatchlistNotification:
-        return WatchlistNotification(
-            notification_id=record.id,
-            user_id=record.user_id,
-            watchlist_id=record.watchlist_id,
-            alert_rule_id=record.alert_rule_id,
-            alert_id=record.alert_id,
-            symbol=record.symbol,
-            rule_name=record.rule_name,
-            title=record.title,
-            message=record.message,
-            event_type=record.event_type,
-            direction=record.direction,
-            confidence=record.confidence,
-            created_at=record.created_at,
-            read_at=record.read_at,
-        )
 
     @staticmethod
     def _delivery_to_domain(
