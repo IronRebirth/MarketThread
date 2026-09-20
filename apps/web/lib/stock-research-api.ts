@@ -47,6 +47,27 @@ export type StockResearchQuoteQuality = {
   source: string | null;
 };
 
+export type StockResearchFundamentals = {
+  instrument_id: string;
+  period_end: string;
+  revenue_growth: string | null;
+  earnings_growth: string | null;
+  gross_margin: string | null;
+  operating_margin: string | null;
+  net_margin: string | null;
+  roe: string | null;
+  roic: string | null;
+  debt_to_equity: string | null;
+  debt_to_ebitda: string | null;
+  operating_cash_flow: string | null;
+  free_cash_flow: string | null;
+  pe_ratio: string | null;
+  ps_ratio: string | null;
+  ev_to_ebitda: string | null;
+  dividend_yield: string | null;
+  source: string;
+};
+
 export type StockResearchHistoricalQuality = {
   status: "sufficient" | "insufficient" | "unavailable";
   start: string;
@@ -65,6 +86,7 @@ export type StockResearchHistoricalQuality = {
 export type StockResearchData = {
   instrument: StockResearchInstrument;
   quote: StockResearchQuote | null;
+  fundamentals: StockResearchFundamentals | null;
   quoteQuality: StockResearchQuoteQuality | null;
   bars: StockResearchBar[];
   historicalQuality: StockResearchHistoricalQuality | null;
@@ -161,6 +183,7 @@ export async function fetchStockResearch(
 
   const [
     quoteResult,
+    fundamentalsResult,
     quoteQualityResult,
     barsResult,
     historicalQualityResult,
@@ -207,6 +230,8 @@ export async function fetchStockResearch(
 
   const quote =
     quoteResult.status === "fulfilled" ? quoteResult.value : null;
+  const fundamentals =
+    fundamentalsResult.status === "fulfilled" ? fundamentalsResult.value : null;
   const quoteQuality =
     quoteQualityResult.status === "fulfilled"
       ? quoteQualityResult.value
@@ -259,6 +284,7 @@ export async function fetchStockResearch(
   return {
     instrument,
     quote,
+    fundamentals,
     quoteQuality,
     bars: [...bars].sort(
       (first, second) =>
