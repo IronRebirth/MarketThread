@@ -244,6 +244,29 @@ export function NotificationInbox() {
     );
   }
 
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col gap-8">
+        <header className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="info">Notifications</Badge>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-brand">MarketThread</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
+              Notification inbox
+            </h1>
+            <p className="mt-3 max-w-3xl text-base leading-7 text-text-secondary">
+              Review alert-rule matches generated from persisted market
+              intelligence for your watchlists.
+            </p>
+          </div>
+        </header>
+        <AuthRequiredPrompt nextPath="/notifications" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-4">
