@@ -28,10 +28,11 @@ async def test_research_context_respects_as_of_cutoff(db_session) -> None:
     )
     now = datetime.now(UTC)
 
+    db_session.add_all([instrument, source])
+    await db_session.flush()
+
     db_session.add_all(
         [
-            instrument,
-            source,
             NewsArticle(
                 id=uuid4(),
                 source_id=source.id,
@@ -63,7 +64,6 @@ async def test_research_context_respects_as_of_cutoff(db_session) -> None:
             ),
         ],
     )
-    await db_session.flush()
     await db_session.commit()
 
     context = await ResearchContextService(db_session).build(
