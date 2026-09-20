@@ -1,6 +1,4 @@
 from datetime import datetime
-from typing import Annotated
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.research.models import ResearchSourceReference
@@ -44,5 +42,3 @@ class ResearchAnswer(BaseModel):
     generated_at: datetime
     grounded: bool = True
 
-
-LimitAnnotation = Annotated[int, Field(ge=1, le=20)]
