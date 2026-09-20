@@ -1,7 +1,7 @@
 import json
 
-from app.research.models import ResearchContext
 from app.research.assistant_models import GeneratedResearchAnswer
+from app.research.models import ResearchContext
 
 
 SYSTEM_PROMPT = """You are the MarketThread research assistant.
@@ -10,7 +10,8 @@ You answer only from the supplied MarketThread context.
 
 Rules:
 1. Treat the supplied context as the complete evidence boundary for this answer.
-2. Never invent market data, company facts, dates, prices, fundamentals, events, or sources.
+2. Never invent market data, company facts, dates, prices, fundamentals, events,
+   or sources.
 3. Do not use outside knowledge, web browsing, or unstated assumptions as evidence.
 4. Respect the requested as_of timestamp. Do not describe information that was not
    available by that cutoff.
@@ -52,16 +53,12 @@ def build_research_prompt(
             "articles": [
                 item.model_dump(mode="json") for item in context.articles
             ],
-            "events": [
-                item.model_dump(mode="json") for item in context.events
-            ],
+            "events": [item.model_dump(mode="json") for item in context.events],
             "company_impacts": [
-                item.model_dump(mode="json")
-                for item in context.company_impacts
+                item.model_dump(mode="json") for item in context.company_impacts
             ],
             "market_impacts": [
-                item.model_dump(mode="json")
-                for item in context.market_impacts
+                item.model_dump(mode="json") for item in context.market_impacts
             ],
             "signals": [
                 item.model_dump(mode="json") for item in context.signals
@@ -71,8 +68,7 @@ def build_research_prompt(
                 for item in context.recommendations
             ],
             "fundamentals": [
-                item.model_dump(mode="json")
-                for item in context.fundamentals
+                item.model_dump(mode="json") for item in context.fundamentals
             ],
             "portfolio_positions": [
                 item.model_dump(mode="json")
@@ -81,8 +77,7 @@ def build_research_prompt(
             "limitations": list(context.limitations),
         },
         "source_references": [
-            item.model_dump(mode="json")
-            for item in context.source_references
+            item.model_dump(mode="json") for item in context.source_references
         ],
     }
 
