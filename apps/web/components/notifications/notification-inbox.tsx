@@ -93,7 +93,7 @@ export function NotificationInbox() {
   );
 
   const loadNotifications = useCallback(
-    async (filterUnread = unreadOnly) => {
+    async (filterUnread: boolean) => {
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -118,7 +118,7 @@ export function NotificationInbox() {
         setIsLoading(false);
       }
     },
-    [unreadOnly],
+    [],
   );
 
   const synchronizeAndLoad = useCallback(async () => {
@@ -156,7 +156,9 @@ export function NotificationInbox() {
       return;
     }
 
-    void synchronizeAndLoad();
+    queueMicrotask(() => {
+      void synchronizeAndLoad();
+    });
   }, [isAuthLoading, isAuthenticated, synchronizeAndLoad]);
 
   useEffect(() => {
@@ -165,7 +167,7 @@ export function NotificationInbox() {
     }
 
     const handleNotificationUpdate = () => {
-      void loadNotifications();
+      void loadNotifications(unreadOnly);
     };
 
     window.addEventListener(
@@ -179,14 +181,6 @@ export function NotificationInbox() {
         handleNotificationUpdate,
       );
     };
-  }, [isAuthLoading, isAuthenticated, loadNotifications]);
-
-  useEffect(() => {
-    if (isAuthLoading || !isAuthenticated) {
-      return;
-    }
-
-    void loadNotifications(unreadOnly);
   }, [isAuthLoading, isAuthenticated, loadNotifications, unreadOnly]);
 
   const visibleSummary = useMemo(() => {
@@ -247,6 +241,7 @@ export function NotificationInbox() {
 
   const handleFilterChange = (nextUnreadOnly: boolean) => {
     setUnreadOnly(nextUnreadOnly);
+    void loadNotifications(nextUnreadOnly);
   };
 
   if (isAuthLoading) {
