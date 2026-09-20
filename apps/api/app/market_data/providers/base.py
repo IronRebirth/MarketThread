@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.market_data.models import (
     Bar,
+    Fundamentals,
     Instrument,
     MarketDataProviderHealth,
     Quote,
@@ -38,3 +39,9 @@ class MarketDataProvider(Protocol):
         end: datetime,
     ) -> Sequence[Bar]:
         """Return normalized OHLCV bars for an instrument and time range."""
+
+    async def get_fundamentals(
+        self,
+        instrument_id: UUID,
+    ) -> Fundamentals | None:
+        """Return the latest normalized fundamentals snapshot for an instrument."""
