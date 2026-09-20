@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.security import (
+    ACCESS_TOKEN_TYPE,
     create_access_token,
     decode_access_token,
     hash_password,
@@ -53,8 +54,14 @@ async def get_current_user(
     try:
         payload = decode_access_token(token)
         subject = payload.get("sub")
+        token_type = payload.get("typ")
+        token_session_version = payload.get("sv")
 
-        if not isinstance(subject, str):
+        if (
+            not isinstance(subject, str)
+            or token_type != ACCESS_TOKEN_TYPE
+            or not isinstance(token_session_version, int)
+        ):
             raise credentials_exception
 
         user_id = UUID(subject)
@@ -65,7 +72,11 @@ async def get_current_user(
 
     user = await session.get(User, user_id)
 
-    if user is None or not user.is_active:
+    if (
+        user is None
+        or not user.is_active
+        or user.session_version != token_session_version
+    ):
         raise credentials_exception
 
     return user
@@ -141,15 +152,31 @@ async def login(
             detail="User account is inactive.",
         )
 
+    settings = get_settings()
     access_token = create_access_token(
         subject=str(user.id),
-        expires_delta=timedelta(minutes=30),
+        session_version=user.session_version,
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
 
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
     )
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def logout(
+    current_user: CurrentUser,
+    session: DatabaseSession,
+) -> None:
+    """Invalidate the current user's active access tokens."""
+
+    current_user.session_version += 1
+    await session.commit()
 
 
 @router.get("/me", response_model=UserRead)
