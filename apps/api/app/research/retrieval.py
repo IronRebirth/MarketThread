@@ -12,7 +12,7 @@ from app.db.models.company_impact import CompanyImpactRecord
 from app.db.models.market_impact import MarketImpactRecord
 from app.db.models.signal import SignalRecord
 from app.db.models.recommendation import RecommendationRecord
-from app.db.models.portfolio import PortfolioPositionRecord, PortfolioRecord
+from app.db.models.portfolio import PortfolioRecord
 from app.research.models import (
     ResearchArticle,
     ResearchCompanyImpact,
