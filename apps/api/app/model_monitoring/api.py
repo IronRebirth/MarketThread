@@ -67,9 +67,7 @@ async def list_monitoring_reports(
     )
 
     return ModelMonitoringReportListResponse(
-        reports=tuple(
-            _persistence.to_response(record) for record in records
-        ),
+        reports=tuple(_persistence.to_response(record) for record in records),
         total=total,
         limit=limit,
         offset=offset,
