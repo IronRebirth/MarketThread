@@ -1,5 +1,4 @@
-from datetime import datetime, timezone
-from uuid import UUID
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +9,8 @@ from .models import ModelMonitoringReport, ModelMonitoringReportResponse
 
 
 class ModelMonitoringPersistenceService:
+    """Persist and retrieve model monitoring snapshots."""
+
     async def create(
         self,
         session: AsyncSession,
@@ -23,11 +24,13 @@ class ModelMonitoringPersistenceService:
             window_end=report.window_end,
             observed_at=report.observed_at,
             metrics=report.model_dump(mode="json"),
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
+
         session.add(record)
         await session.commit()
         await session.refresh(record)
+
         return record
 
     async def list(
@@ -39,17 +42,37 @@ class ModelMonitoringPersistenceService:
         offset: int,
     ) -> tuple[tuple[ModelMonitoringSnapshot, ...], int]:
         statement = select(ModelMonitoringSnapshot)
-        count_statement = select(func.count(ModelMonitoringSnapshot.id))
+        count_statement = select(
+            func.count(ModelMonitoringSnapshot.id),
+        )
+
         if model_name is not None:
-            statement = statement.where(ModelMonitoringSnapshot.model_name == model_name)
-            count_statement = count_statement.where(ModelMonitoringSnapshot.model_name == model_name)
-        statement = statement.order_by(ModelMonitoringSnapshot.observed_at.desc()).offset(offset).limit(limit)
+            statement = statement.where(
+                ModelMonitoringSnapshot.model_name == model_name,
+            )
+            count_statement = count_statement.where(
+                ModelMonitoringSnapshot.model_name == model_name,
+            )
+
+        statement = (
+            statement.order_by(
+                ModelMonitoringSnapshot.observed_at.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+
         result = await session.execute(statement)
         total = await session.scalar(count_statement)
+
         return tuple(result.scalars().all()), int(total or 0)
 
-    def to_response(self, record: ModelMonitoringSnapshot) -> ModelMonitoringReportResponse:
+    def to_response(
+        self,
+        record: ModelMonitoringSnapshot,
+    ) -> ModelMonitoringReportResponse:
         report = ModelMonitoringReport.model_validate(record.metrics)
+
         return ModelMonitoringReportResponse(
             **report.model_dump(),
             created_at=record.created_at,
