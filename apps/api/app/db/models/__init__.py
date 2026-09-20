@@ -27,6 +27,7 @@ from app.db.models.user import User
 from app.db.models.watchlist import WatchlistItemRecord, WatchlistRecord
 from app.db.models.watchlist_alert_rule import WatchlistAlertRuleRecord
 from app.db.models.watchlist_alert_state import WatchlistAlertStateRecord
+from app.db.models.watchlist_notification import WatchlistNotificationRecord
 
 __all__ = [
     "BacktestEvaluation",
@@ -51,5 +52,6 @@ __all__ = [
     "WatchlistAlertRuleRecord",
     "WatchlistAlertStateRecord",
     "WatchlistItemRecord",
+    "WatchlistNotificationRecord",
     "WatchlistRecord",
 ]

@@ -32,6 +32,7 @@ from app.signals.api import router as signals_router
 from app.watchlists.alert_rules_api import router as watchlist_alert_rules_router
 from app.watchlists.alerts_api import router as watchlist_alerts_router
 from app.watchlists.api import router as watchlists_router
+from app.watchlists.notifications_api import router as notifications_router
 
 settings = get_settings()
 
@@ -64,6 +65,7 @@ app.include_router(recommendations_router)
 app.include_router(watchlists_router)
 app.include_router(watchlist_alerts_router)
 app.include_router(watchlist_alert_rules_router)
+app.include_router(notifications_router)
 app.include_router(portfolio_allocation_ranges_router)
 app.include_router(portfolio_allocation_explanations_router)
 app.include_router(portfolio_router)
