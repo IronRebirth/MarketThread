@@ -1,14 +1,14 @@
 """create model monitoring snapshots
 
-Revision ID: u7b2c9d5e1f3
+Revision ID: v8c3e7f2a4b1
 Revises: t6a1c9e4b7d8
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "u7b2c9d5e1f3"
-down_revision = "t6a1c9e4b7d8"
+revision = "v8c3e7f2a4b1"
+down_revision = "u7b2c5d9e1f3"
 branch_labels = None
 depends_on = None
 
