@@ -1,8 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
-import pytest
 from pydantic import ValidationError
 
 from app.model_monitoring.models import (
