@@ -12,6 +12,9 @@ from app.market_impact.api import router as market_impact_router
 from app.model_monitoring.api import router as model_monitoring_router
 from app.news.api import router as news_router
 from app.notifications.email_api import router as notification_email_router
+from app.observability.api import router as observability_router
+from app.observability.logging import configure_logging
+from app.observability.middleware import ObservabilityMiddleware
 from app.portfolio.allocation_explanations_api import (
     router as portfolio_allocation_explanations_router,
 )
@@ -40,13 +43,15 @@ from app.watchlists.api import router as watchlists_router
 from app.watchlists.notifications_api import router as notifications_router
 
 settings = get_settings()
+configure_logging(settings.log_level)
 
 app = FastAPI(
     title=f"{settings.app_name} API",
     version="0.1.0",
-    description=("Backend API for the MarketThread financial intelligence platform."),
+    description="Backend API for the MarketThread financial intelligence platform.",
 )
 
+app.add_middleware(ObservabilityMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -60,6 +65,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(observability_router)
 app.include_router(market_data_router)
 app.include_router(backtesting_router)
 app.include_router(news_router)
