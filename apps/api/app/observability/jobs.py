@@ -13,6 +13,7 @@ class JobExecution:
     def __init__(self, job_name: str) -> None:
         self.job_name = job_name
         self.started_at = perf_counter()
+        self._finished = False
 
     def __enter__(self) -> "JobExecution":
         JOB_STARTED_TOTAL.inc((self.job_name,))
@@ -26,7 +27,7 @@ class JobExecution:
         self._finish("success")
 
     def fail(self, error: Exception) -> None:
-        logger.exception(
+        logger.error(
             "background_job_failed",
             exc_info=error,
             extra={
@@ -43,6 +44,10 @@ class JobExecution:
         self._finish("failure")
 
     def _finish(self, status: str) -> None:
+        if self._finished:
+            return
+
+        self._finished = True
         JOB_COMPLETED_TOTAL.inc((self.job_name, status))
         logger.info(
             "background_job_finished",
