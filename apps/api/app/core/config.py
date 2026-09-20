@@ -29,6 +29,8 @@ class Settings(BaseSettings):
         min_length=32,
     )
     jwt_algorithm: str = "HS256"
+    jwt_issuer: str = "marketthread-api"
+    access_token_expire_minutes: int = Field(default=30, gt=0, le=1440)
 
     cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
 
