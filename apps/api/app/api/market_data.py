@@ -9,6 +9,7 @@ from app.db.session import get_db_session
 from app.market_data.ingestion import MarketDataIngestionService
 from app.market_data.models import (
     Bar,
+    Fundamentals,
     HistoricalDataCompleteness,
     Instrument,
     MarketDataIngestionRequest,
@@ -140,6 +141,38 @@ async def get_instrument(
         symbol,
         service,
     )
+
+
+@router.get(
+    "/instruments/{symbol}/fundamentals",
+    response_model=Fundamentals,
+)
+async def get_fundamentals(
+    symbol: str,
+    service: MarketDataServiceDependency,
+) -> Fundamentals:
+    """Return the latest available fundamentals for an instrument."""
+
+    instrument = await _resolve_instrument(
+        symbol,
+        service,
+    )
+
+    try:
+        fundamentals = await service.get_fundamentals(instrument.id)
+    except MarketDataProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Market-data is unavailable.",
+        ) from exc
+
+    if fundamentals is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Fundamentals not found.",
+        )
+
+    return fundamentals
 
 
 @router.get(
