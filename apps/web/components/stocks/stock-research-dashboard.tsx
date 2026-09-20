@@ -483,12 +483,9 @@ export function StockResearchDashboard({
         </ResearchList>
       </section>
 
-      <Card
-        title="Fundamental analysis"
-        description="Company fundamentals are intentionally not synthesized when no persisted fundamental-data source exists."
-      >
-        <Unavailable text="Fundamental metrics are not currently available in the MarketThread persisted data model. This section will remain explicit until a reliable fundamentals provider and persistence layer are implemented." />
-      </Card>
+      <FundamentalAnalysis fundamentals={data.fundamentals} />
+
+      <EvidenceAnalysis evidence={data.evidence} />
 
       <Card title="Research interpretation" description="How to read this page.">
         <div className="grid gap-4 md:grid-cols-3">
@@ -507,6 +504,191 @@ export function StockResearchDashboard({
         </div>
       </Card>
     </div>
+  );
+}
+
+function EvidenceAnalysis({
+  evidence,
+}: {
+  evidence: StockResearchData["evidence"];
+}) {
+  return (
+    <Card
+      title="Evidence, risk & confidence"
+      description="Traceable evidence and analytical uncertainty from the persisted research chain."
+    >
+      <div className="grid gap-4 md:grid-cols-3">
+        <Metric
+          label="Evidence confidence"
+          value={percent(evidence.confidence)}
+        />
+        <Metric label="Interpretation risk" value={percent(evidence.risk_score)} />
+        <Metric
+          label="Source articles"
+          value={String(evidence.articles.length)}
+        />
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <EvidenceList
+          title="Supporting factors"
+          items={evidence.supporting_factors}
+          empty="No supporting factors were persisted for the selected research chain."
+        />
+        <EvidenceList
+          title="Contradicting factors"
+          items={evidence.contradicting_factors}
+          empty="No contradicting factors were persisted for the selected research chain."
+        />
+        <EvidenceList
+          title="Invalidation conditions"
+          items={evidence.invalidation_conditions}
+          empty="No invalidation conditions were persisted."
+        />
+        <EvidenceArticles articles={evidence.articles} />
+      </div>
+
+      <p className="mt-5 border-t border-border pt-4 text-xs leading-5 text-text-muted">
+        Confidence measures support for the analytical interpretation. Risk
+        measures uncertainty in that interpretation. Neither metric is a
+        probability of profit or a forecasted loss percentage.
+      </p>
+    </Card>
+  );
+}
+
+function EvidenceList({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: string[];
+  empty: string;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface-subtle p-4">
+      <p className="text-sm font-semibold text-text-primary">{title}</p>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm leading-6 text-text-muted">{empty}</p>
+      ) : (
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-text-secondary">
+          {items.map((item) => (
+            <li key={item} className="border-l-2 border-border pl-3">
+              {item}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function EvidenceArticles({
+  articles,
+}: {
+  articles: StockResearchData["evidence"]["articles"];
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface-subtle p-4">
+      <p className="text-sm font-semibold text-text-primary">
+        Source articles
+      </p>
+      {articles.length === 0 ? (
+        <p className="mt-3 text-sm leading-6 text-text-muted">
+          No source articles could be resolved from the persisted evidence
+          identifiers.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {articles.map((article) => (
+            <a
+              key={article.article_id}
+              href={article.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-md border border-border bg-surface p-3 hover:border-brand"
+            >
+              <p className="text-sm font-medium text-text-primary">
+                {article.title}
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                {article.source_name} · {article.source_domain} ·{" "}
+                {dateTime(article.published_at)}
+              </p>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FundamentalAnalysis({
+  fundamentals,
+}: {
+  fundamentals: StockResearchData["fundamentals"];
+}) {
+  if (!fundamentals) {
+    return (
+      <Card
+        title="Fundamental analysis"
+        description="Fundamentals are shown only when a persisted provider-backed snapshot is available."
+      >
+        <Unavailable text="Fundamental metrics are currently unavailable for this instrument. MarketThread does not substitute estimates or fabricated values." />
+      </Card>
+    );
+  }
+
+  const metrics = [
+    ["Revenue growth", fundamentals.revenue_growth, true],
+    ["Earnings growth", fundamentals.earnings_growth, true],
+    ["Gross margin", fundamentals.gross_margin, true],
+    ["Operating margin", fundamentals.operating_margin, true],
+    ["Net margin", fundamentals.net_margin, true],
+    ["ROE", fundamentals.roe, true],
+    ["ROIC", fundamentals.roic, true],
+    ["Debt / equity", fundamentals.debt_to_equity, false],
+    ["Debt / EBITDA", fundamentals.debt_to_ebitda, false],
+    ["Operating cash flow", fundamentals.operating_cash_flow, false],
+    ["Free cash flow", fundamentals.free_cash_flow, false],
+    ["P/E", fundamentals.pe_ratio, false],
+    ["P/S", fundamentals.ps_ratio, false],
+    ["EV / EBITDA", fundamentals.ev_to_ebitda, false],
+    ["Dividend yield", fundamentals.dividend_yield, true],
+  ] as const;
+
+  return (
+    <Card
+      title="Fundamental analysis"
+      description={`Persisted provider snapshot for ${fundamentals.period_end} · source ${fundamentals.source}`}
+    >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {metrics.map(([name, value, isPercent]) => (
+          <div
+            key={name}
+            className="rounded-md border border-border bg-surface-subtle p-4"
+          >
+            <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
+              {name}
+            </p>
+            <p className="mt-2 text-lg font-semibold text-text-primary">
+              {value === null
+                ? "Unavailable"
+                : isPercent
+                  ? percent(Number(value))
+                  : price(value)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-5 border-t border-border pt-4 text-xs leading-5 text-text-muted">
+        Fundamental values are provider-supplied observations for the stated
+        reporting period. Missing metrics remain unavailable rather than being
+        inferred.
+      </p>
+    </Card>
   );
 }
 

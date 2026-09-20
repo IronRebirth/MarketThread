@@ -7,6 +7,7 @@ from app.db.models.backtest import (
 )
 from app.db.models.company_impact import CompanyImpactRecord
 from app.db.models.event import EventRecord
+from app.db.models.fundamental_snapshot import FundamentalSnapshot
 from app.db.models.instrument import Instrument
 from app.db.models.market_bar import MarketBar
 from app.db.models.market_data import MarketQuote
@@ -39,6 +40,7 @@ __all__ = [
     "BacktestRun",
     "CompanyImpactRecord",
     "EventRecord",
+    "FundamentalSnapshot",
     "Instrument",
     "MarketBar",
     "MarketImpactRecord",

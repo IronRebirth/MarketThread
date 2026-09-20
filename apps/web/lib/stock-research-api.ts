@@ -47,6 +47,27 @@ export type StockResearchQuoteQuality = {
   source: string | null;
 };
 
+export type StockResearchFundamentals = {
+  instrument_id: string;
+  period_end: string;
+  revenue_growth: string | null;
+  earnings_growth: string | null;
+  gross_margin: string | null;
+  operating_margin: string | null;
+  net_margin: string | null;
+  roe: string | null;
+  roic: string | null;
+  debt_to_equity: string | null;
+  debt_to_ebitda: string | null;
+  operating_cash_flow: string | null;
+  free_cash_flow: string | null;
+  pe_ratio: string | null;
+  ps_ratio: string | null;
+  ev_to_ebitda: string | null;
+  dividend_yield: string | null;
+  source: string;
+};
+
 export type StockResearchHistoricalQuality = {
   status: "sufficient" | "insufficient" | "unavailable";
   start: string;
@@ -62,9 +83,28 @@ export type StockResearchHistoricalQuality = {
   sources: string[];
 };
 
+export type StockResearchEvidenceArticle = {
+  article_id: string;
+  source_name: string;
+  source_domain: string;
+  title: string;
+  url: string;
+  published_at: string;
+};
+
+export type StockResearchEvidence = {
+  article_ids: string[];
+  articles: StockResearchEvidenceArticle[];
+  supporting_factors: string[];
+  contradicting_factors: string[];
+  invalidation_conditions: string[];
+  confidence: number;
+  risk_score: number;
+};
 export type StockResearchData = {
   instrument: StockResearchInstrument;
   quote: StockResearchQuote | null;
+  fundamentals: StockResearchFundamentals | null;
   quoteQuality: StockResearchQuoteQuality | null;
   bars: StockResearchBar[];
   historicalQuality: StockResearchHistoricalQuality | null;
@@ -72,6 +112,7 @@ export type StockResearchData = {
   impacts: CompanyImpact[];
   signals: MarketSignal[];
   recommendations: Recommendation[];
+  evidence: StockResearchEvidence;
 };
 
 export class StockResearchApiError extends Error {
@@ -125,6 +166,45 @@ async function authenticatedJson<T>(
   return (await response.json()) as T;
 }
 
+
+async function fetchEvidenceArticles(
+  articleIds: string[],
+): Promise<StockResearchEvidenceArticle[]> {
+  const uniqueIds = [...new Set(articleIds)];
+
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const results = await Promise.allSettled(
+    uniqueIds.slice(0, 12).map((articleId) =>
+      authenticatedJson<{
+        article: {
+          article_id: string;
+          source_name: string;
+          source_domain: string;
+          title: string;
+          url: string;
+          published_at: string;
+        };
+      }>(`${API_BASE_URL}/news/${encodeURIComponent(articleId)}`),
+    ),
+  );
+
+  return results.flatMap((result) =>
+    result.status === "fulfilled"
+      ? [{
+          article_id: result.value.article.article_id,
+          source_name: result.value.article.source_name,
+          source_domain: result.value.article.source_domain,
+          title: result.value.article.title,
+          url: result.value.article.url,
+          published_at: result.value.article.published_at,
+        }]
+      : [],
+  );
+}
+
 export async function fetchStockResearch(
   symbol: string,
   lookbackDays = 365,
@@ -161,6 +241,7 @@ export async function fetchStockResearch(
 
   const [
     quoteResult,
+    fundamentalsResult,
     quoteQualityResult,
     barsResult,
     historicalQualityResult,
@@ -172,6 +253,11 @@ export async function fetchStockResearch(
       `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
         normalizedSymbol,
       )}/quote`,
+    ),
+    authenticatedJson<StockResearchFundamentals>(
+      `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
+        normalizedSymbol,
+      )}/fundamentals`,
     ),
     authenticatedJson<StockResearchQuoteQuality>(
       `${API_BASE_URL}/market-data/instruments/${encodeURIComponent(
@@ -207,6 +293,10 @@ export async function fetchStockResearch(
 
   const quote =
     quoteResult.status === "fulfilled" ? quoteResult.value : null;
+  const fundamentals =
+    fundamentalsResult.status === "fulfilled"
+      ? fundamentalsResult.value
+      : null;
   const quoteQuality =
     quoteQualityResult.status === "fulfilled"
       ? quoteQualityResult.value
@@ -256,9 +346,39 @@ export async function fetchStockResearch(
     );
   }
 
+  const primarySignal = signals[0];
+  const primaryRecommendation = recommendations[0];
+  const evidenceArticleIds = [
+    ...(primarySignal?.evidence_article_ids ?? []),
+    ...(primaryRecommendation?.evidence_article_ids ?? []),
+    ...impacts.flatMap((impact) => impact.evidence_article_ids ?? []),
+  ];
+
+  const evidenceArticles = await fetchEvidenceArticles(evidenceArticleIds);
+
+  const evidence = {
+    article_ids: [...new Set(evidenceArticleIds)],
+    articles: evidenceArticles,
+    supporting_factors: primarySignal?.supporting_factors ?? [],
+    contradicting_factors: primarySignal?.contradicting_factors ?? [],
+    invalidation_conditions:
+      primaryRecommendation?.invalidation_conditions ??
+      primarySignal?.invalidation_conditions ??
+      [],
+    confidence:
+      primaryRecommendation?.confidence_score ??
+      primarySignal?.confidence ??
+      0,
+    risk_score:
+      primaryRecommendation?.risk_score ??
+      primarySignal?.risk_score ??
+      0,
+  };
+
   return {
     instrument,
     quote,
+    fundamentals,
     quoteQuality,
     bars: [...bars].sort(
       (first, second) =>
@@ -270,5 +390,6 @@ export async function fetchStockResearch(
     impacts,
     signals,
     recommendations,
+    evidence,
   };
 }
