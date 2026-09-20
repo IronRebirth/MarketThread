@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../auth/auth-provider";
 import { ThemeSwitcher } from "../ui/theme-switcher";
 import { Button } from "../ui/button";
+import { fetchNotifications } from "../../lib/notifications-api";
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -28,12 +30,58 @@ function getInitials(email: string) {
 
 export function Topbar({ onMenuClick }: TopbarProps) {
   const [search, setSearch] = useState("");
+  const [unreadCount, setUnreadCount] = useState(0);
   const { user, isLoading, logout } = useAuth();
 
   const initials = useMemo(
     () => (user ? getInitials(user.email) : "MT"),
     [user],
   );
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadUnreadCount = async () => {
+      try {
+        const response = await fetchNotifications(1, true);
+
+        if (!cancelled) {
+          setUnreadCount(response.unread_count);
+        }
+      } catch {
+        if (!cancelled) {
+          setUnreadCount(0);
+        }
+      }
+    };
+
+    queueMicrotask(() => {
+      void loadUnreadCount();
+    });
+
+    const handleNotificationUpdate = () => {
+      void loadUnreadCount();
+    };
+
+    window.addEventListener(
+      "marketthread-notifications-updated",
+      handleNotificationUpdate,
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "marketthread-notifications-updated",
+        handleNotificationUpdate,
+      );
+    };
+  }, [user]);
+
+  const visibleUnreadCount = user ? unreadCount : 0;
 
   return (
     <header className="flex min-h-16 items-center gap-4 border-b border-border bg-surface px-4 sm:px-6">
@@ -62,6 +110,44 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           className="h-10 w-full max-w-2xl rounded-md border border-border bg-surface-subtle px-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
       </div>
+
+      {user && (
+        <Link
+          href="/notifications"
+          className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border text-text-secondary hover:bg-surface-muted hover:text-text-primary"
+          aria-label={
+            visibleUnreadCount > 0
+              ? `Notifications, ${visibleUnreadCount} unread`
+              : "Notifications"
+          }
+          title="Notifications"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path
+              d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M10 21h4"
+              strokeLinecap="round"
+            />
+          </svg>
+
+          {visibleUnreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-negative px-1 text-[10px] font-semibold text-text-inverse">
+              {visibleUnreadCount > 99 ? "99+" : visibleUnreadCount}
+            </span>
+          )}
+        </Link>
+      )}
 
       <div className="hidden shrink-0 sm:block">
         <ThemeSwitcher />
