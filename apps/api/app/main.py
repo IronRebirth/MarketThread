@@ -36,6 +36,7 @@ from app.portfolio.risk_metrics_api import router as portfolio_risk_metrics_rout
 from app.recommendations.api import router as recommendations_router
 from app.research.api import router as research_router
 from app.research.assistant_api import router as research_assistant_router
+from app.security.middleware import SecurityHeadersMiddleware
 from app.signals.api import router as signals_router
 from app.watchlists.alert_rules_api import router as watchlist_alert_rules_router
 from app.watchlists.alerts_api import router as watchlist_alerts_router
@@ -52,15 +53,23 @@ app = FastAPI(
 )
 
 app.add_middleware(ObservabilityMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
+        origin.strip()
+        for origin in settings.cors_allowed_origins.split(",")
+        if origin.strip()
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Request-ID",
+        "traceparent",
+    ],
 )
 
 app.include_router(auth_router)
