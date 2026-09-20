@@ -1,6 +1,6 @@
-import secrets
 from contextvars import ContextVar
 from dataclasses import dataclass
+import secrets
 
 
 @dataclass(frozen=True)

@@ -23,12 +23,9 @@ def test_traceparent_is_validated_and_normalized() -> None:
 
 def test_invalid_traceparent_is_rejected() -> None:
     assert parse_traceparent("not-a-trace") is None
-    assert (
-        parse_traceparent(
-            "00-00000000000000000000000000000000-0123456789abcdef-01",
-        )
-        is None
-    )
+    assert parse_traceparent(
+        "00-00000000000000000000000000000000-0123456789abcdef-01",
+    ) is None
 
 
 def test_metrics_are_rendered_as_prometheus() -> None:

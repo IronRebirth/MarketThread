@@ -149,16 +149,14 @@ def render_prometheus() -> bytes:
                     values = label_values + (str(bucket),)
                     rendered_labels = _render_labels(labels, values)
                     lines.append(
-                        f"{metric.name}_bucket{rendered_labels} "
-                        f"{counts[index]}",
+                        f"{metric.name}_bucket{rendered_labels} {counts[index]}",
                     )
 
                 labels = metric.labels + ("le",)
                 values = label_values + ("+Inf",)
                 rendered_labels = _render_labels(labels, values)
                 lines.append(
-                    f"{metric.name}_bucket{rendered_labels} "
-                    f"{counts[-1]}",
+                    f"{metric.name}_bucket{rendered_labels} {counts[-1]}",
                 )
 
                 total, count = metric.totals[label_values]
@@ -189,8 +187,5 @@ def _render_labels(
             value.replace("\\", "\\\\").replace('"', '\\"'),
         )
 
-    pairs = [
-        f'{name}="{value}"'
-        for name, value in zip(names, escaped_values, strict=True)
-    ]
+    pairs = [f'{name}="{value}"' for name, value in zip(names, escaped_values, strict=True)]
     return "{" + ",".join(pairs) + "}"

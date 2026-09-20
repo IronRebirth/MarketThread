@@ -34,7 +34,9 @@ class JobExecution:
                 "observability": {
                     "job_name": self.job_name,
                     "trace_id": (
-                        get_current_trace().trace_id if get_current_trace() else None
+                        get_current_trace().trace_id
+                        if get_current_trace()
+                        else None
                     ),
                 },
             },

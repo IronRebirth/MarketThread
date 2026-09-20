@@ -26,9 +26,12 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         started = perf_counter()
-        trace = parse_traceparent(
-            request.headers.get("traceparent"),
-        ) or generate_trace()
+        trace = (
+            parse_traceparent(
+                request.headers.get("traceparent"),
+            )
+            or generate_trace()
+        )
         token = set_current_trace(trace)
         response: Response | None = None
         status_code = 500
