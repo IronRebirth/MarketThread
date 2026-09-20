@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/auth-provider";
+import { AuthRequiredPrompt } from "../auth/auth-required-prompt";
 import {
   fetchNotifications,
   markNotificationRead,
