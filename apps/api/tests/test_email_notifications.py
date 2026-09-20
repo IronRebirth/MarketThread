@@ -1,3 +1,4 @@
+from email.message import EmailMessage
 from uuid import UUID
 
 import pytest
@@ -5,10 +6,10 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.db.models.notification_email_delivery import (
     NotificationEmailDeliveryRecord,
 )
-from app.db.models.user import User
 from app.notifications.email_service import (
     EmailDeliveryConfigurationError,
     NotificationEmailService,
@@ -18,15 +19,6 @@ from tests.test_watchlist_notifications import (
     create_market_impact,
     create_watchlist_with_rule,
 )
-
-
-async def get_user_id(
-    client: AsyncClient,
-    headers: dict[str, str],
-) -> UUID:
-    response = await client.get("/auth/me", headers=headers)
-    assert response.status_code == 200
-    return UUID(response.json()["id"])
 
 
 async def create_notification(
@@ -269,3 +261,37 @@ async def test_failed_email_delivery_is_recorded_for_retry(
     assert delivery.status == "failed"
     assert delivery.attempt_count == 1
     assert delivery.last_error == "SMTP_HOST is not configured."
+
+
+def test_email_service_rejects_missing_smtp_port() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://test:test@localhost:5432/test",
+        smtp_host="smtp.example.com",
+        smtp_port=None,
+        smtp_from_email="alerts@example.com",
+    )
+
+    notification = {
+        "notification_id": UUID("00000000-0000-0000-0000-000000000001"),
+        "user_id": UUID("00000000-0000-0000-0000-000000000002"),
+        "watchlist_id": UUID("00000000-0000-0000-0000-000000000003"),
+        "alert_rule_id": UUID("00000000-0000-0000-0000-000000000004"),
+        "alert_id": UUID("00000000-0000-0000-0000-000000000005"),
+        "symbol": "TEST",
+        "rule_name": "Test rule",
+        "title": "Test notification",
+        "message": "Test notification message",
+        "event_type": "earnings",
+        "direction": "positive",
+        "confidence": 0.9,
+        "created_at": "2026-09-20T00:00:00+00:00",
+        "read_at": None,
+    }
+
+    from app.watchlists.notification_models import WatchlistNotification
+
+    with pytest.raises(EmailDeliveryConfigurationError):
+        NotificationEmailService(settings).send(
+            recipient_email="user@example.com",
+            notification=WatchlistNotification.model_validate(notification),
+        )
