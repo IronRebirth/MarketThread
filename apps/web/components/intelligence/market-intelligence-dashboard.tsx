@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth/auth-provider";
 import {
-  fetchMarketEvents,
   EventsApiError,
+  fetchMarketEvents,
   type MarketEvent,
 } from "../../lib/events-api";
 import {
@@ -122,18 +122,6 @@ function getOpportunityVariant(
   return "info" as const;
 }
 
-function getRiskVariant(riskScore: number) {
-  if (riskScore >= 0.8) {
-    return "negative" as const;
-  }
-
-  if (riskScore >= RISK_THRESHOLD) {
-    return "warning" as const;
-  }
-
-  return "info" as const;
-}
-
 function MetricValue({
   label,
   value,
@@ -171,12 +159,39 @@ export function MarketIntelligenceDashboard() {
   const [portfolioSensitivity, setPortfolioSensitivity] =
     useState<PortfolioEventSensitivity | null>(null);
 
+  const selectedPortfolioIdRef = useRef<string | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isPortfolioLoading, setIsPortfolioLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [portfolioErrorMessage, setPortfolioErrorMessage] = useState<
     string | null
   >(null);
+
+  const loadSelectedPortfolioSensitivity = useCallback(
+    async (portfolioId: string) => {
+      setIsPortfolioLoading(true);
+      setPortfolioErrorMessage(null);
+
+      try {
+        setPortfolioSensitivity(
+          await fetchPortfolioEventSensitivity(portfolioId, PORTFOLIO_LIMIT),
+        );
+      } catch (error) {
+        setPortfolioSensitivity(null);
+        setPortfolioErrorMessage(
+          error instanceof PortfolioEventSensitivityApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Portfolio event sensitivity could not be loaded.",
+        );
+      } finally {
+        setIsPortfolioLoading(false);
+      }
+    },
+    [],
+  );
 
   const loadWorkspace = useCallback(async () => {
     setIsLoading(true);
@@ -219,36 +234,29 @@ export function MarketIntelligenceDashboard() {
       );
     }
 
-    if (user) {
-      const portfoliosResult = await fetchPortfolios().catch((error) => ({
-        error,
-      }));
-
-      if ("error" in portfoliosResult) {
-        const reason = portfoliosResult.error;
-        setPortfolios([]);
-        setPortfolioSensitivity(null);
-        setSelectedPortfolioId(null);
-        setPortfolioErrorMessage(
-          reason instanceof PortfolioApiError
-            ? reason.message
-            : reason instanceof Error
-              ? reason.message
-              : "Portfolio intelligence could not be loaded.",
-        );
-      } else {
-        setPortfolios(portfoliosResult);
+    if (!user) {
+      setPortfolios([]);
+      setPortfolioSensitivity(null);
+      selectedPortfolioIdRef.current = null;
+      setSelectedPortfolioId(null);
+      setPortfolioErrorMessage(null);
+    } else {
+      try {
+        const nextPortfolios = await fetchPortfolios();
+        setPortfolios(nextPortfolios);
 
         const currentSelectionIsValid =
-          selectedPortfolioId !== null &&
-          portfoliosResult.some(
-            (portfolio) => portfolio.portfolio_id === selectedPortfolioId,
+          selectedPortfolioIdRef.current !== null &&
+          nextPortfolios.some(
+            (portfolio) =>
+              portfolio.portfolio_id === selectedPortfolioIdRef.current,
           );
 
         const nextPortfolioId = currentSelectionIsValid
-          ? selectedPortfolioId
-          : portfoliosResult[0]?.portfolio_id ?? null;
+          ? selectedPortfolioIdRef.current
+          : nextPortfolios[0]?.portfolio_id ?? null;
 
+        selectedPortfolioIdRef.current = nextPortfolioId;
         setSelectedPortfolioId(nextPortfolioId);
         setPortfolioErrorMessage(null);
 
@@ -280,42 +288,24 @@ export function MarketIntelligenceDashboard() {
           setPortfolioErrorMessage(null);
           setIsPortfolioLoading(false);
         }
+      } catch (error) {
+        setPortfolios([]);
+        setPortfolioSensitivity(null);
+        selectedPortfolioIdRef.current = null;
+        setSelectedPortfolioId(null);
+        setPortfolioErrorMessage(
+          error instanceof PortfolioApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Portfolio intelligence could not be loaded.",
+        );
       }
-    } else {
-      setPortfolios([]);
-      setPortfolioSensitivity(null);
-      setSelectedPortfolioId(null);
-      setPortfolioErrorMessage(null);
     }
 
     setErrorMessage(errors.length > 0 ? errors.join(" ") : null);
     setIsLoading(false);
-  }, [selectedPortfolioId, user]);
-
-  const loadSelectedPortfolioSensitivity = useCallback(
-    async (portfolioId: string) => {
-      setIsPortfolioLoading(true);
-      setPortfolioErrorMessage(null);
-
-      try {
-        setPortfolioSensitivity(
-          await fetchPortfolioEventSensitivity(portfolioId, PORTFOLIO_LIMIT),
-        );
-      } catch (error) {
-        setPortfolioSensitivity(null);
-        setPortfolioErrorMessage(
-          error instanceof PortfolioEventSensitivityApiError
-            ? error.message
-            : error instanceof Error
-              ? error.message
-              : "Portfolio event sensitivity could not be loaded.",
-        );
-      } finally {
-        setIsPortfolioLoading(false);
-      }
-    },
-    [],
-  );
+  }, [user]);
 
   useEffect(() => {
     if (isAuthLoading) {
@@ -460,16 +450,15 @@ export function MarketIntelligenceDashboard() {
       const themeValue =
         event.catalyst !== "other" ? event.catalyst : event.event_type;
       const label = formatLabel(themeValue);
-      const key = themeValue;
 
-      const current = themes.get(key) ?? {
+      const current = themes.get(themeValue) ?? {
         label,
         count: 0,
         eventType: event.event_type,
       };
 
       current.count += 1;
-      themes.set(key, current);
+      themes.set(themeValue, current);
     }
 
     return [...themes.values()]
@@ -611,7 +600,9 @@ export function MarketIntelligenceDashboard() {
 
             <MetricValue
               label="Data posture"
-              value={events.length > 0 || signals.length > 0 ? "Observed" : "Empty"}
+              value={
+                events.length > 0 || signals.length > 0 ? "Observed" : "Empty"
+              }
               description="The dashboard only summarizes persisted observations; it does not create synthetic market data."
             />
           </div>
@@ -654,13 +645,20 @@ export function MarketIntelligenceDashboard() {
           ) : (
             <div className="flex flex-col divide-y divide-border">
               {recentEvents.map((event) => (
-                <article key={event.event_id} className="py-4 first:pt-0 last:pb-0">
+                <article
+                  key={event.event_id}
+                  className="py-4 first:pt-0 last:pb-0"
+                >
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={getRelevanceVariant(event.market_relevance)}>
+                    <Badge
+                      variant={getRelevanceVariant(event.market_relevance)}
+                    >
                       {formatLabel(event.market_relevance)} relevance
                     </Badge>
 
-                    <Badge variant={getDirectionVariant(event.impact_direction)}>
+                    <Badge
+                      variant={getDirectionVariant(event.impact_direction)}
+                    >
                       {formatLabel(event.impact_direction)}
                     </Badge>
 
@@ -815,6 +813,7 @@ export function MarketIntelligenceDashboard() {
                   value={selectedPortfolioId ?? ""}
                   onChange={(event) => {
                     const nextId = event.target.value || null;
+                    selectedPortfolioIdRef.current = nextId;
                     setSelectedPortfolioId(nextId);
 
                     if (nextId) {
@@ -849,7 +848,10 @@ export function MarketIntelligenceDashboard() {
               <LoadingStack count={3} />
             ) : portfolioErrorMessage ? (
               <div className="rounded-md border border-border bg-surface-subtle p-4">
-                <p className="text-sm leading-6 text-text-secondary" role="alert">
+                <p
+                  className="text-sm leading-6 text-text-secondary"
+                  role="alert"
+                >
                   {portfolioErrorMessage}
                 </p>
 
