@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.market_data.models import (
     Bar,
+    Fundamentals,
     HistoricalDataCompleteness,
     Instrument,
     MarketDataProviderHealth,
@@ -62,6 +63,46 @@ class MarketDataService:
         provider = self._require_provider()
 
         return await provider.get_instrument(normalized_symbol)
+
+    async def get_fundamentals(
+        self,
+        instrument_id: UUID,
+    ) -> Fundamentals | None:
+        """Retrieve persisted fundamentals before using the provider."""
+
+        from app.market_data.repository import FundamentalRepository
+
+        if self.repository is not None:
+            persisted = await FundamentalRepository(
+                self.repository.session,
+            ).get_latest(instrument_id)
+
+            if persisted is not None:
+                return Fundamentals.model_validate(
+                    {
+                        "instrument_id": persisted.instrument_id,
+                        "period_end": persisted.period_end,
+                        "revenue_growth": persisted.revenue_growth,
+                        "earnings_growth": persisted.earnings_growth,
+                        "gross_margin": persisted.gross_margin,
+                        "operating_margin": persisted.operating_margin,
+                        "net_margin": persisted.net_margin,
+                        "roe": persisted.roe,
+                        "roic": persisted.roic,
+                        "debt_to_equity": persisted.debt_to_equity,
+                        "debt_to_ebitda": persisted.debt_to_ebitda,
+                        "operating_cash_flow": persisted.operating_cash_flow,
+                        "free_cash_flow": persisted.free_cash_flow,
+                        "pe_ratio": persisted.pe_ratio,
+                        "ps_ratio": persisted.ps_ratio,
+                        "ev_to_ebitda": persisted.ev_to_ebitda,
+                        "dividend_yield": persisted.dividend_yield,
+                        "source": persisted.source,
+                    },
+                )
+
+        provider = self._require_provider()
+        return await provider.get_fundamentals(instrument_id)
 
     async def get_latest_quote(
         self,
