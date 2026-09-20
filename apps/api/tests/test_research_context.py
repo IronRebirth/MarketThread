@@ -12,9 +12,10 @@ from app.research.retrieval import ResearchContextService
 
 @pytest.mark.asyncio
 async def test_research_context_respects_as_of_cutoff(db_session) -> None:
+    symbol = f"CUTOFF-{uuid4().hex[:8].upper()}"
     instrument = Instrument(
         id=uuid4(),
-        symbol="CUTOFF",
+        symbol=symbol,
         name="Cutoff Test Corp",
         exchange="TEST",
         asset_class="equity",
@@ -36,9 +37,9 @@ async def test_research_context_respects_as_of_cutoff(db_session) -> None:
             NewsArticle(
                 id=uuid4(),
                 source_id=source.id,
-                title="Visible event for CUTOFF",
+                title=f"Visible event for {symbol}",
                 url="https://example.com/visible",
-                summary="Visible CUTOFF research",
+                summary=f"Visible {symbol} research",
                 published_at=now - timedelta(days=2),
                 discovered_at=now - timedelta(days=2),
                 content_hash=uuid4().hex + uuid4().hex,
@@ -47,9 +48,9 @@ async def test_research_context_respects_as_of_cutoff(db_session) -> None:
             NewsArticle(
                 id=uuid4(),
                 source_id=source.id,
-                title="Future event for CUTOFF",
+                title=f"Future event for {symbol}",
                 url="https://example.com/future",
-                summary="Future CUTOFF research",
+                summary=f"Future {symbol} research",
                 published_at=now + timedelta(days=2),
                 discovered_at=now + timedelta(days=2),
                 content_hash=uuid4().hex + uuid4().hex,
@@ -68,7 +69,7 @@ async def test_research_context_respects_as_of_cutoff(db_session) -> None:
 
     context = await ResearchContextService(db_session).build(
         ResearchQuery(
-            question="CUTOFF",
+            question=symbol,
             as_of=now,
             limit=10,
         ),
