@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
 
     smtp_host: str | None = None
-    smtp_port: int | None = 587
+    smtp_port: int = 587
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str | None = None
@@ -47,6 +47,7 @@ class Settings(BaseSettings):
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        env_ignore_empty=True,
         extra="ignore",
     )
 
