@@ -29,6 +29,7 @@ from app.portfolio.risk_constraints_api import (
 )
 from app.portfolio.risk_metrics_api import router as portfolio_risk_metrics_router
 from app.recommendations.api import router as recommendations_router
+from app.research.api import router as research_router
 from app.signals.api import router as signals_router
 from app.watchlists.alert_rules_api import router as watchlist_alert_rules_router
 from app.watchlists.alerts_api import router as watchlist_alerts_router
@@ -75,6 +76,7 @@ app.include_router(portfolio_event_sensitivity_router)
 app.include_router(portfolio_reference_position_sizing_router)
 app.include_router(portfolio_risk_constraints_router)
 app.include_router(portfolio_risk_metrics_router)
+app.include_router(research_router)
 app.include_router(portfolio_performance_router)
 
 
