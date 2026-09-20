@@ -52,7 +52,11 @@ function dailyReturns(bars: StockResearchBar[]) {
   for (let index = 1; index < bars.length; index += 1) {
     const previous = Number(bars[index - 1].close);
     const current = Number(bars[index].close);
-    if (previous > 0 && Number.isFinite(previous) && Number.isFinite(current)) {
+    if (
+      previous > 0 &&
+      Number.isFinite(previous) &&
+      Number.isFinite(current)
+    ) {
       returns.push(current / previous - 1);
     }
   }
@@ -99,13 +103,29 @@ function TechnicalSummary({ data }: { data: StockResearchData }) {
       description="Deterministic indicators calculated from the persisted OHLCV bars returned by MarketThread."
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Metric label="Latest close" value={latestClose === null ? "—" : price(latestClose)} />
-        <Metric label="20-day SMA" value={sma20 === null ? "Insufficient data" : price(sma20)} />
-        <Metric label="50-day SMA" value={sma50 === null ? "Insufficient data" : price(sma50)} />
-        <Metric label="200-day SMA" value={sma200 === null ? "Insufficient data" : price(sma200)} />
+        <Metric
+          label="Latest close"
+          value={latestClose === null ? "—" : price(latestClose)}
+        />
+        <Metric
+          label="20-day SMA"
+          value={sma20 === null ? "Insufficient data" : price(sma20)}
+        />
+        <Metric
+          label="50-day SMA"
+          value={sma50 === null ? "Insufficient data" : price(sma50)}
+        />
+        <Metric
+          label="200-day SMA"
+          value={sma200 === null ? "Insufficient data" : price(sma200)}
+        />
         <Metric
           label="Annualized volatility"
-          value={volatility === null ? "Insufficient data" : percent(volatility)}
+          value={
+            volatility === null
+              ? "Insufficient data"
+              : percent(volatility)
+          }
         />
       </div>
 
@@ -136,7 +156,9 @@ function TechnicalSummary({ data }: { data: StockResearchData }) {
 
 function PriceHistory({ bars }: { bars: StockResearchBar[] }) {
   const visible = bars.slice(-30);
-  const values = visible.map((bar) => Number(bar.close)).filter(Number.isFinite);
+  const values = visible
+    .map((bar) => Number(bar.close))
+    .filter(Number.isFinite);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 0;
   const range = max - min || 1;
@@ -210,26 +232,40 @@ export function StockResearchDashboard({
   }, [initialSymbol]);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [load]);
 
   const researchSignals = useMemo(
     () =>
-      [...(data?.signals ?? [])].sort(
-        (first, second) =>
-          second.confidence - first.confidence ||
-          second.risk_score - first.risk_score,
-      ).slice(0, 6),
+      [...(data?.signals ?? [])]
+        .sort(
+          (first, second) =>
+            second.confidence - first.confidence ||
+            second.risk_score - first.risk_score,
+        )
+        .slice(0, 6),
     [data?.signals],
   );
 
   if (isLoading) {
     return (
       <div className="flex flex-col gap-5">
-        <Card title="Loading stock research" description="Retrieving persisted market and intelligence records.">
+        <Card
+          title="Loading stock research"
+          description="Retrieving persisted market and intelligence records."
+        >
           <div className="flex flex-col gap-3">
             {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="h-24 animate-pulse rounded-md bg-surface-muted" />
+              <div
+                key={item}
+                className="h-24 animate-pulse rounded-md bg-surface-muted"
+              />
             ))}
           </div>
         </Card>
@@ -240,13 +276,22 @@ export function StockResearchDashboard({
   if (errorMessage || !data) {
     return (
       <div className="flex flex-col gap-6">
-        <Card title="Stock research unavailable" description="The requested instrument could not be resolved from the MarketThread data layer.">
-          <p className="text-sm leading-6 text-text-secondary" role="alert">
+        <Card
+          title="Stock research unavailable"
+          description="The requested instrument could not be resolved from the MarketThread data layer."
+        >
+          <p
+            className="text-sm leading-6 text-text-secondary"
+            role="alert"
+          >
             {errorMessage ?? "No research data is available."}
           </p>
           <div className="mt-4 flex gap-2">
             <Button onClick={() => void load()}>Try again</Button>
-            <Link href="/stocks" className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium text-text-primary hover:bg-surface-subtle">
+            <Link
+              href="/stocks"
+              className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium text-text-primary hover:bg-surface-subtle"
+            >
               Search another stock
             </Link>
           </div>
@@ -263,25 +308,37 @@ export function StockResearchDashboard({
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="info">Stock Research</Badge>
           <Badge variant="neutral">{instrument.exchange}</Badge>
-          <Badge variant={quoteQuality?.status === "fresh" ? "positive" : "warning"}>
+          <Badge
+            variant={
+              quoteQuality?.status === "fresh" ? "positive" : "warning"
+            }
+          >
             Quote {quoteQuality?.status ?? "unavailable"}
           </Badge>
         </div>
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="font-mono text-sm font-semibold text-brand">{instrument.symbol}</p>
+            <p className="font-mono text-sm font-semibold text-brand">
+              {instrument.symbol}
+            </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
               {instrument.name}
             </h1>
             <p className="mt-2 text-sm text-text-secondary">
-              {instrument.exchange} · {instrument.currency} · {label(instrument.asset_class)}
+              {instrument.exchange} · {instrument.currency} ·{" "}
+              {label(instrument.asset_class)}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => void load()}>Refresh research</Button>
-            <Link href="/stocks" className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium text-text-primary hover:bg-surface-subtle">
+            <Button variant="secondary" onClick={() => void load()}>
+              Refresh research
+            </Button>
+            <Link
+              href="/stocks"
+              className="inline-flex h-10 items-center rounded-md border border-border px-4 text-sm font-medium text-text-primary hover:bg-surface-subtle"
+            >
               Change stock
             </Link>
           </div>
@@ -289,20 +346,37 @@ export function StockResearchDashboard({
       </header>
 
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Latest price" value={quote ? price(quote.price) : "Unavailable"} />
-        <Metric label="Quote source" value={quote?.source ?? "Unavailable"} />
+        <Metric
+          label="Latest price"
+          value={quote ? price(quote.price) : "Unavailable"}
+        />
+        <Metric
+          label="Quote source"
+          value={quote?.source ?? "Unavailable"}
+        />
         <Metric label="Historical bars" value={String(data.bars.length)} />
         <Metric
           label="Historical coverage"
-          value={historicalQuality ? percent(historicalQuality.coverage_ratio) : "Unavailable"}
+          value={
+            historicalQuality
+              ? percent(historicalQuality.coverage_ratio)
+              : "Unavailable"
+          }
         />
       </section>
 
-      <Card title="Market-data quality" description="Freshness and coverage are displayed alongside research so missing or stale data remains visible.">
+      <Card
+        title="Market-data quality"
+        description="Freshness and coverage are displayed alongside research so missing or stale data remains visible."
+      >
         <div className="grid gap-4 md:grid-cols-2">
           <ResearchRow
             label="Latest quote"
-            value={quoteQuality?.observed_at ? dateTime(quoteQuality.observed_at) : "Unavailable"}
+            value={
+              quoteQuality?.observed_at
+                ? dateTime(quoteQuality.observed_at)
+                : "Unavailable"
+            }
           />
           <ResearchRow
             label="Quote age"
@@ -314,13 +388,20 @@ export function StockResearchDashboard({
           />
           <ResearchRow
             label="Historical status"
-            value={historicalQuality ? label(historicalQuality.status) : "Unavailable"}
+            value={
+              historicalQuality
+                ? label(historicalQuality.status)
+                : "Unavailable"
+            }
           />
           <ResearchRow
             label="Observed range"
             value={
-              historicalQuality?.first_observed_at && historicalQuality.last_observed_at
-                ? `${dateTime(historicalQuality.first_observed_at)} → ${dateTime(historicalQuality.last_observed_at)}`
+              historicalQuality?.first_observed_at &&
+              historicalQuality.last_observed_at
+                ? `${dateTime(
+                    historicalQuality.first_observed_at,
+                  )} → ${dateTime(historicalQuality.last_observed_at)}`
                 : "Unavailable"
             }
           />
@@ -339,7 +420,9 @@ export function StockResearchDashboard({
           {data.impacts.slice(0, 6).map((impact) => (
             <ResearchItem
               key={impact.impact_id}
-              title={`${label(impact.direction)} · ${label(impact.impact_type)}`}
+              title={`${label(impact.direction)} · ${label(
+                impact.impact_type,
+              )}`}
               meta={`${percent(impact.confidence)} confidence`}
               body={impact.rationale}
             />
@@ -355,7 +438,9 @@ export function StockResearchDashboard({
             <ResearchItem
               key={event.event_id}
               title={event.title}
-              meta={`${label(event.market_relevance)} relevance · ${percent(event.confidence)} confidence`}
+              meta={`${label(event.market_relevance)} relevance · ${percent(
+                event.confidence,
+              )} confidence`}
               body={event.summary}
             />
           ))}
@@ -372,7 +457,9 @@ export function StockResearchDashboard({
             <ResearchItem
               key={signal.signal_id}
               title={`${label(signal.opportunity)} · ${label(signal.direction)}`}
-              meta={`${percent(signal.confidence)} confidence · ${percent(signal.risk_score)} risk`}
+              meta={`${percent(signal.confidence)} confidence · ${percent(
+                signal.risk_score,
+              )} risk`}
               body={signal.rationale}
             />
           ))}
@@ -387,22 +474,36 @@ export function StockResearchDashboard({
             <ResearchItem
               key={recommendation.recommendation_id}
               title={label(recommendation.state)}
-              meta={`${percent(recommendation.confidence_score)} confidence · ${percent(recommendation.risk_score)} risk`}
+              meta={`${percent(
+                recommendation.confidence_score,
+              )} confidence · ${percent(recommendation.risk_score)} risk`}
               body={recommendation.rationale}
             />
           ))}
         </ResearchList>
       </section>
 
-      <Card title="Fundamental analysis" description="Company fundamentals are intentionally not synthesized when no persisted fundamental-data source exists.">
+      <Card
+        title="Fundamental analysis"
+        description="Company fundamentals are intentionally not synthesized when no persisted fundamental-data source exists."
+      >
         <Unavailable text="Fundamental metrics are not currently available in the MarketThread persisted data model. This section will remain explicit until a reliable fundamentals provider and persistence layer are implemented." />
       </Card>
 
       <Card title="Research interpretation" description="How to read this page.">
         <div className="grid gap-4 md:grid-cols-3">
-          <Interpretation title="Historical context" description="Moving averages, volatility, and drawdown describe observed historical behavior over the available bars." />
-          <Interpretation title="Evidence strength" description="Confidence describes support for a structured event, impact, signal, or recommendation. It is not a probability of profit." />
-          <Interpretation title="No fabricated coverage" description="Missing quotes, incomplete history, and unavailable fundamentals remain visible instead of being replaced with placeholder values." />
+          <Interpretation
+            title="Historical context"
+            description="Moving averages, volatility, and drawdown describe observed historical behavior over the available bars."
+          />
+          <Interpretation
+            title="Evidence strength"
+            description="Confidence describes support for a structured event, impact, signal, or recommendation. It is not a probability of profit."
+          />
+          <Interpretation
+            title="No fabricated coverage"
+            description="Missing quotes, incomplete history, and unavailable fundamentals remain visible instead of being replaced with placeholder values."
+          />
         </div>
       </Card>
     </div>
@@ -420,7 +521,9 @@ function ResearchList({
   empty: string;
   children: React.ReactNode;
 }) {
-  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
+  const hasChildren = Array.isArray(children)
+    ? children.length > 0
+    : Boolean(children);
 
   return (
     <Card title={title} description={description}>
@@ -451,20 +554,38 @@ function ResearchItem({
   );
 }
 
-function ResearchRow({ label: rowLabel, value }: { label: string; value: string }) {
+function ResearchRow({
+  label: rowLabel,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-surface-subtle px-4 py-3">
       <span className="text-sm text-text-secondary">{rowLabel}</span>
-      <span className="text-right text-sm font-medium text-text-primary">{value}</span>
+      <span className="text-right text-sm font-medium text-text-primary">
+        {value}
+      </span>
     </div>
   );
 }
 
-function Metric({ label: metricLabel, value }: { label: string; value: string }) {
+function Metric({
+  label: metricLabel,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <Card>
-      <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">{metricLabel}</p>
-      <p className="mt-2 break-words text-2xl font-semibold tracking-tight text-text-primary">{value}</p>
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-text-muted">
+        {metricLabel}
+      </p>
+      <p className="mt-2 break-words text-2xl font-semibold tracking-tight text-text-primary">
+        {value}
+      </p>
     </Card>
   );
 }
@@ -477,11 +598,19 @@ function Unavailable({ text }: { text: string }) {
   );
 }
 
-function Interpretation({ title, description }: { title: string; description: string }) {
+function Interpretation({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
   return (
     <div className="rounded-md border border-border bg-surface-subtle p-4">
       <p className="text-sm font-semibold text-text-primary">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-text-secondary">{description}</p>
+      <p className="mt-2 text-sm leading-6 text-text-secondary">
+        {description}
+      </p>
     </div>
   );
 }
