@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
 
     sentry_dsn: str | None = None
+    admin_emails: str = ""
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

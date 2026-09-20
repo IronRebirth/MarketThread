@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useAuth } from "../auth/auth-provider";
 import { primaryNavigation } from "./navigation";
 
 interface SidebarProps {
@@ -11,6 +12,7 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  const { user } = useAuth();
 
   return (
     <aside className="flex h-full w-72 flex-col border-r border-border bg-surface">
@@ -70,6 +72,24 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             );
           })}
         </div>
+          {user?.role === "admin" && (
+            <Link
+              href="/admin"
+              onClick={onNavigate}
+              aria-current={pathname.startsWith("/admin") ? "page" : undefined}
+              className={[
+                "block rounded-md px-3 py-2.5 transition-colors",
+                pathname.startsWith("/admin")
+                  ? "bg-brand-soft text-brand"
+                  : "text-text-secondary hover:bg-surface-muted hover:text-text-primary",
+              ].join(" ")}
+            >
+              <span className="block text-sm font-medium">Administration</span>
+              <span className="mt-0.5 block text-xs leading-5 text-text-muted">
+                System operations and audit activity
+              </span>
+            </Link>
+          )}
       </nav>
 
       <div className="border-t border-border px-4 py-4">

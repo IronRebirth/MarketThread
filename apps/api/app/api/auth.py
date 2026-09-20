@@ -8,6 +8,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
     decode_access_token,
@@ -94,10 +95,18 @@ async def register(
             detail="An account with this email already exists.",
         )
 
+    settings = get_settings()
+    admin_emails = {
+        item.strip().lower()
+        for item in settings.admin_emails.split(",")
+        if item.strip()
+    }
+
     user = User(
         email=email,
         password_hash=hash_password(payload.password),
         is_active=True,
+        role="admin" if email in admin_emails else "user",
     )
 
     session.add(user)
