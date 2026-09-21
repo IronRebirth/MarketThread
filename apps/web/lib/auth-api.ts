@@ -5,11 +5,6 @@ export type User = {
   role: "user" | "admin";
 };
 
-export type TokenResponse = {
-  access_token: string;
-  token_type: string;
-};
-
 export type LoginRequest = {
   email: string;
   password: string;
@@ -88,8 +83,8 @@ async function requestJson<T>(
 
 export async function login(
   payload: LoginRequest,
-): Promise<TokenResponse> {
-  return requestJson<TokenResponse>(`${API_BASE_URL}/auth/login`, {
+): Promise<User> {
+  return requestJson<User>(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
