@@ -50,8 +50,7 @@ def _validate_cookie_origin(request: Request) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "Cookie-authenticated state-changing requests require "
-                "an Origin header."
+                "Cookie-authenticated state-changing requests require an Origin header."
             ),
         )
 

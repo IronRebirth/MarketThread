@@ -85,10 +85,7 @@ class Settings(BaseSettings):
                 "AUTH_COOKIE_SECURE must be enabled in production.",
             )
 
-        if (
-            self.auth_cookie_samesite.lower() == "none"
-            and not self.auth_cookie_secure
-        ):
+        if self.auth_cookie_samesite.lower() == "none" and not self.auth_cookie_secure:
             raise ValueError(
                 "AUTH_COOKIE_SECURE must be enabled when AUTH_COOKIE_SAMESITE is none.",
             )
