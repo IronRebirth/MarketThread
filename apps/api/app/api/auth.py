@@ -167,7 +167,6 @@ async def register(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
-    request: Request,
     response: Response,
     session: DatabaseSession,
 ) -> TokenResponse:
@@ -219,7 +218,6 @@ async def login(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def logout(
-    request: Request,
     response: Response,
     current_user: CurrentUser,
     session: DatabaseSession,
