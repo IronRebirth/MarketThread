@@ -16,6 +16,7 @@ import {
   getStoredAccessToken,
   login,
   register,
+  revokeAccessToken,
   storeAccessToken,
   type LoginRequest,
   type RegisterRequest,
@@ -149,6 +150,14 @@ export function AuthProvider({
   );
 
   const handleLogout = useCallback(() => {
+    const accessToken = getStoredAccessToken();
+
+    if (accessToken) {
+      void revokeAccessToken(accessToken).catch(() => {
+        // Clear the browser session even if the network is unavailable.
+      });
+    }
+
     clearSession();
   }, [clearSession]);
 
