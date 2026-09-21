@@ -22,6 +22,7 @@ def test_production_configuration_accepts_secure_values() -> None:
         jwt_secret_key="a" * 64,
         database_url="postgresql+psycopg://marketthread:strong-password@db:5432/marketthread",
         cors_allowed_origins="https://marketthread.example.com",
+        auth_cookie_secure=True,
     )
 
     assert settings.app_env == "production"

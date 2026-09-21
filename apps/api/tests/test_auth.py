@@ -151,7 +151,8 @@ async def test_me_returns_current_user(
         },
     )
 
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("marketthread.access")
+    assert token
 
     response = await client.get(
         "/auth/me",
@@ -203,7 +204,10 @@ async def test_logout_invalidates_existing_access_token(
     )
     assert login_response.cookies.get("marketthread.access")
 
-    logout_response = await client.post("/auth/logout")
+    logout_response = await client.post(
+        "/auth/logout",
+        headers={"Origin": "http://localhost:3000"},
+    )
 
     assert logout_response.status_code == 204
 
@@ -304,7 +308,10 @@ async def test_cookie_logout_clears_cookie_and_invalidates_session(
         login_response.cookies["marketthread.access"],
     )
 
-    logout_response = await client.post("/auth/logout")
+    logout_response = await client.post(
+        "/auth/logout",
+        headers={"Origin": "http://localhost:3000"},
+    )
 
     assert logout_response.status_code == 204
     assert "marketthread.access=" in logout_response.headers["set-cookie"]
