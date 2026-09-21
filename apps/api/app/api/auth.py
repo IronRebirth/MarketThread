@@ -47,7 +47,10 @@ def _validate_cookie_origin(request: Request) -> None:
 
     origin = request.headers.get("origin")
     if not origin:
-        return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cookie-authenticated state-changing requests require an Origin header.",
+        )
 
     settings = get_settings()
     allowed_origins = {
