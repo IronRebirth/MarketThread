@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-
 import { useAuth } from "../auth/auth-provider";
 import {
   fetchNotifications,
@@ -77,7 +75,6 @@ function getDirectionVariant(
 }
 
 export function NotificationInbox() {
-  const router = useRouter();
   const { isLoading: isAuthLoading, isAuthenticated } = useAuth();
 
   const [notifications, setNotifications] = useState<
@@ -143,13 +140,6 @@ export function NotificationInbox() {
       setIsSyncing(false);
     }
   }, [loadNotifications, unreadOnly]);
-
-  useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated) {
-      const next = encodeURIComponent("/notifications");
-      router.replace("/login?next=" + next);
-    }
-  }, [isAuthLoading, isAuthenticated, router]);
 
   useEffect(() => {
     if (isAuthLoading || !isAuthenticated) {
@@ -249,16 +239,6 @@ export function NotificationInbox() {
       <div className="flex min-h-80 items-center justify-center">
         <p className="text-sm text-text-secondary">
           Restoring your MarketThread session…
-        </p>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex min-h-80 items-center justify-center">
-        <p className="text-sm text-text-secondary">
-          Redirecting to sign in…
         </p>
       </div>
     );

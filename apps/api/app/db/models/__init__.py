@@ -1,5 +1,6 @@
 """SQLAlchemy models for MarketThread."""
 
+from app.db.models.admin_audit_log import AdminAuditLogRecord
 from app.db.models.backtest import (
     BacktestEvaluation,
     BacktestFold,
@@ -12,6 +13,7 @@ from app.db.models.instrument import Instrument
 from app.db.models.market_bar import MarketBar
 from app.db.models.market_data import MarketQuote
 from app.db.models.market_impact import MarketImpactRecord
+from app.db.models.model_monitoring_snapshot import ModelMonitoringSnapshot
 from app.db.models.news import NewsArticle, NewsSource
 from app.db.models.notification_email_delivery import (
     NotificationEmailDeliveryRecord,
@@ -34,6 +36,7 @@ from app.db.models.watchlist_alert_state import WatchlistAlertStateRecord
 from app.db.models.watchlist_notification import WatchlistNotificationRecord
 
 __all__ = [
+    "AdminAuditLogRecord",
     "BacktestEvaluation",
     "BacktestFold",
     "BacktestProvenance",
@@ -44,6 +47,7 @@ __all__ = [
     "Instrument",
     "MarketBar",
     "MarketImpactRecord",
+    "ModelMonitoringSnapshot",
     "MarketQuote",
     "NewsArticle",
     "NewsSource",

@@ -2,6 +2,7 @@ export type User = {
   id: string;
   email: string;
   is_active: boolean;
+  role: "user" | "admin";
 };
 
 export type TokenResponse = {
@@ -118,6 +119,25 @@ export async function getCurrentUser(
       Authorization: `Bearer ${accessToken}`,
     },
   });
+}
+
+export async function revokeAccessToken(
+  accessToken: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok && response.status !== 401) {
+    throw new AuthApiError(
+      response.status,
+      await readErrorMessage(response),
+    );
+  }
 }
 
 export function getStoredAccessToken(): string | null {

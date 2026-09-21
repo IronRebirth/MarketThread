@@ -178,3 +178,73 @@ async def test_password_is_hashed() -> None:
 
     assert hashed != TEST_PASSWORD
     assert hashed.startswith("$argon2")
+
+
+@pytest.mark.asyncio
+async def test_logout_invalidates_existing_access_token(
+    client: AsyncClient,
+) -> None:
+    await client.post(
+        "/auth/register",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    login_response = await client.post(
+        "/auth/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+    token = login_response.json()["access_token"]
+
+    logout_response = await client.post(
+        "/auth/logout",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert logout_response.status_code == 204
+
+    me_response = await client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert me_response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_access_token_contains_required_claims(
+    client: AsyncClient,
+) -> None:
+    await client.post(
+        "/auth/register",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    login_response = await client.post(
+        "/auth/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    token = login_response.json()["access_token"]
+
+    from app.core.security import decode_access_token
+
+    payload = decode_access_token(token)
+
+    assert payload["typ"] == "access"
+    assert payload["iss"] == "marketthread-api"
+    assert isinstance(payload["iat"], int)
+    assert isinstance(payload["exp"], int)
+    assert payload["exp"] > payload["iat"]
+    assert payload["sv"] == 0

@@ -18,6 +18,7 @@ class UserRead(BaseModel):
     id: UUID
     email: EmailStr
     is_active: bool
+    role: str
 
 
 class TokenResponse(BaseModel):
