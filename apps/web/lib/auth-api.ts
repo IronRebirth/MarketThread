@@ -5,11 +5,6 @@ export type User = {
   role: "user" | "admin";
 };
 
-export type TokenResponse = {
-  access_token: string;
-  token_type: string;
-};
-
 export type LoginRequest = {
   email: string;
   password: string;
@@ -32,8 +27,6 @@ export class AuthApiError extends Error {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
-
-export const ACCESS_TOKEN_STORAGE_KEY = "marketthread.access_token";
 
 async function readErrorMessage(response: Response): Promise<string> {
   const detail = await response.text();
@@ -74,6 +67,7 @@ async function requestJson<T>(
 ): Promise<T> {
   const response = await fetch(input, {
     ...init,
+    credentials: "include",
     cache: "no-store",
   });
 
@@ -89,8 +83,8 @@ async function requestJson<T>(
 
 export async function login(
   payload: LoginRequest,
-): Promise<TokenResponse> {
-  return requestJson<TokenResponse>(`${API_BASE_URL}/auth/login`, {
+): Promise<User> {
+  return requestJson<User>(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -111,55 +105,39 @@ export async function register(
   });
 }
 
-export async function getCurrentUser(
-  accessToken: string,
-): Promise<User> {
-  return requestJson<User>(`${API_BASE_URL}/auth/me`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+export async function getCurrentUser(): Promise<User> {
+  return requestJson<User>(`${API_BASE_URL}/auth/me`);
+}
+
+export async function revokeAccessToken(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
   });
-}
 
-export function getStoredAccessToken(): string | null {
-  if (typeof window === "undefined") {
-    return null;
+  if (!response.ok && response.status !== 401) {
+    throw new AuthApiError(
+      response.status,
+      await readErrorMessage(response),
+    );
   }
-
-  return window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
-}
-
-export function storeAccessToken(accessToken: string): void {
-  window.sessionStorage.setItem(
-    ACCESS_TOKEN_STORAGE_KEY,
-    accessToken,
-  );
-}
-
-export function clearStoredAccessToken(): void {
-  window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
 }
 
 export async function authenticatedFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  const accessToken = getStoredAccessToken();
-
   const headers = new Headers(init.headers);
-
-  if (accessToken) {
-    headers.set("Authorization", `Bearer ${accessToken}`);
-  }
 
   const response = await fetch(input, {
     ...init,
     headers,
+    credentials: "include",
     cache: "no-store",
   });
 
   if (response.status === 401) {
-    clearStoredAccessToken();
     window.dispatchEvent(new Event("marketthread-auth-expired"));
   }
 

@@ -21,13 +21,6 @@ class UserRead(BaseModel):
     role: str
 
 
-class TokenResponse(BaseModel):
-    """Authentication token response."""
-
-    access_token: str
-    token_type: str = "bearer"
-
-
 class LoginRequest(BaseModel):
     """Credentials used to authenticate a user."""
 

@@ -29,6 +29,12 @@ class Settings(BaseSettings):
         min_length=32,
     )
     jwt_algorithm: str = "HS256"
+    jwt_issuer: str = "marketthread-api"
+    access_token_expire_minutes: int = Field(default=30, gt=0, le=1440)
+
+    auth_cookie_name: str = "marketthread.access"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
 
     cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
 
@@ -74,6 +80,16 @@ class Settings(BaseSettings):
                 "CORS_ALLOWED_ORIGINS must not use localhost in production.",
             )
 
+        if not self.auth_cookie_secure:
+            raise ValueError(
+                "AUTH_COOKIE_SECURE must be enabled in production.",
+            )
+
+        if self.auth_cookie_samesite.lower() == "none" and not self.auth_cookie_secure:
+            raise ValueError(
+                "AUTH_COOKIE_SECURE must be enabled when AUTH_COOKIE_SAMESITE is none.",
+            )
+
         return self
 
     @field_validator("jwt_algorithm")
@@ -82,6 +98,18 @@ class Settings(BaseSettings):
         if value != "HS256":
             raise ValueError("JWT_ALGORITHM must be HS256.")
         return value
+
+    @field_validator("auth_cookie_samesite")
+    @classmethod
+    def validate_auth_cookie_samesite(cls, value: str) -> str:
+        normalized = value.lower()
+
+        if normalized not in {"lax", "strict", "none"}:
+            raise ValueError(
+                "AUTH_COOKIE_SAMESITE must be lax, strict, or none.",
+            )
+
+        return normalized
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
@@ -95,4 +123,5 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return a cached application settings instance."""
+
     return Settings()

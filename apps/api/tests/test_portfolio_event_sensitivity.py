@@ -48,7 +48,7 @@ async def create_authenticated_user(
 
     assert login_response.status_code == 200
 
-    return login_response.json()["access_token"]
+    return login_response.cookies["marketthread.access"]
 
 
 async def create_instrument(

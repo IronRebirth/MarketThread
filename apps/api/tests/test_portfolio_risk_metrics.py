@@ -65,7 +65,7 @@ async def create_authenticated_user(
 
     assert login_response.status_code == 200
 
-    token = login_response.json()["access_token"]
+    token = login_response.cookies["marketthread.access"]
 
     return User(email=email, password_hash=hash_password(TEST_PASSWORD)), token
 

@@ -22,6 +22,7 @@ def test_production_configuration_accepts_secure_values() -> None:
         jwt_secret_key="a" * 64,
         database_url="postgresql+psycopg://marketthread:strong-password@db:5432/marketthread",
         cors_allowed_origins="https://marketthread.example.com",
+        auth_cookie_secure=True,
     )
 
     assert settings.app_env == "production"
@@ -59,3 +60,26 @@ def test_rate_limiter_rejects_requests_after_limit() -> None:
         limiter.check(request, "test")
 
     assert exc_info.value.status_code == 429
+
+
+def test_production_configuration_requires_secure_auth_cookie() -> None:
+    with pytest.raises(ValueError, match="AUTH_COOKIE_SECURE"):
+        Settings(
+            app_env="production",
+            jwt_secret_key="a" * 64,
+            database_url="postgresql+psycopg://marketthread:strong-password@db:5432/marketthread",
+            cors_allowed_origins="https://marketthread.example.com",
+            auth_cookie_secure=False,
+        )
+
+
+def test_auth_cookie_samesite_accepts_supported_values() -> None:
+    for value in ("lax", "strict", "none"):
+        settings = Settings(auth_cookie_samesite=value)
+
+        assert settings.auth_cookie_samesite == value
+
+
+def test_auth_cookie_samesite_rejects_unknown_values() -> None:
+    with pytest.raises(ValueError, match="AUTH_COOKIE_SAMESITE"):
+        Settings(auth_cookie_samesite="invalid")
