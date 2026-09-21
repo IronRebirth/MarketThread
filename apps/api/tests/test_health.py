@@ -1,8 +1,9 @@
-from sqlalchemy.exc import SQLAlchemyError
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import get_db_session
 from app.main import app
+
 
 client = TestClient(app)
 
