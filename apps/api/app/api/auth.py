@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ from app.db.session import get_db_session
 from app.schemas.auth import LoginRequest, TokenResponse, UserCreate, UserRead
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
@@ -39,17 +39,54 @@ async def get_user_by_email(
     return result.scalar_one_or_none()
 
 
+def _validate_cookie_origin(request: Request) -> None:
+    """Reject cross-origin state-changing requests using cookie authentication."""
+
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return
+
+    origin = request.headers.get("origin")
+    if not origin:
+        return
+
+    settings = get_settings()
+    allowed_origins = {
+        item.strip()
+        for item in settings.cors_allowed_origins.split(",")
+        if item.strip()
+    }
+
+    if origin not in allowed_origins:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cross-origin authentication request is not allowed.",
+        )
+
+
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    request: Request,
+    token: Annotated[str | None, Depends(oauth2_scheme)],
     session: DatabaseSession,
 ) -> User:
-    """Resolve and validate the authenticated user."""
+    """Resolve and validate the authenticated user from bearer or cookie auth."""
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired authentication token.",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    settings = get_settings()
+    cookie_token = request.cookies.get(settings.auth_cookie_name)
+    using_cookie_auth = token is None and cookie_token is not None
+
+    if using_cookie_auth:
+        _validate_cookie_origin(request)
+
+    token = token or cookie_token
+
+    if token is None:
+        raise credentials_exception
 
     try:
         payload = decode_access_token(token)
@@ -130,9 +167,11 @@ async def register(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
+    request: Request,
+    response: Response,
     session: DatabaseSession,
 ) -> TokenResponse:
-    """Authenticate a user and issue an access token."""
+    """Authenticate a user and establish a secure browser session."""
 
     user = await get_user_by_email(payload.email.lower(), session)
 
@@ -159,6 +198,16 @@ async def login(
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
 
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=access_token,
+        max_age=settings.access_token_expire_minutes * 60,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
+        path="/",
+    )
+
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
@@ -170,13 +219,21 @@ async def login(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def logout(
+    request: Request,
+    response: Response,
     current_user: CurrentUser,
     session: DatabaseSession,
 ) -> None:
-    """Invalidate the current user's active access tokens."""
+    """Invalidate the current user's active access tokens and cookie."""
 
     current_user.session_version += 1
     await session.commit()
+
+    settings = get_settings()
+    response.delete_cookie(
+        key=settings.auth_cookie_name,
+        path="/",
+    )
 
 
 @router.get("/me", response_model=UserRead)
