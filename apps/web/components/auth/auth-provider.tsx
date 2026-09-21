@@ -11,13 +11,10 @@ import {
 } from "react";
 
 import {
-  clearStoredAccessToken,
   getCurrentUser,
-  getStoredAccessToken,
   login,
   register,
   revokeAccessToken,
-  storeAccessToken,
   type LoginRequest,
   type RegisterRequest,
   type User,
@@ -44,20 +41,12 @@ export function AuthProvider({
   const [isLoading, setIsLoading] = useState(true);
 
   const clearSession = useCallback(() => {
-    clearStoredAccessToken();
     setUser(null);
   }, []);
 
   const refreshUser = useCallback(async (): Promise<User | null> => {
-    const accessToken = getStoredAccessToken();
-
-    if (!accessToken) {
-      setUser(null);
-      return null;
-    }
-
     try {
-      const nextUser = await getCurrentUser(accessToken);
+      const nextUser = await getCurrentUser();
 
       setUser(nextUser);
 
@@ -73,13 +62,7 @@ export function AuthProvider({
 
     const restoreSession = async () => {
       try {
-        const accessToken = getStoredAccessToken();
-
-        if (!accessToken) {
-          return;
-        }
-
-        const nextUser = await getCurrentUser(accessToken);
+        const nextUser = await getCurrentUser();
 
         if (isMounted) {
           setUser(nextUser);
@@ -122,12 +105,10 @@ export function AuthProvider({
 
   const handleLogin = useCallback(
     async (payload: LoginRequest): Promise<User> => {
-      const tokenResponse = await login(payload);
-
-      storeAccessToken(tokenResponse.access_token);
+      await login(payload);
 
       try {
-        const nextUser = await getCurrentUser(tokenResponse.access_token);
+        const nextUser = await getCurrentUser();
 
         setUser(nextUser);
 
@@ -150,13 +131,9 @@ export function AuthProvider({
   );
 
   const handleLogout = useCallback(() => {
-    const accessToken = getStoredAccessToken();
-
-    if (accessToken) {
-      void revokeAccessToken(accessToken).catch(() => {
-        // Clear the browser session even if the network is unavailable.
-      });
-    }
+    void revokeAccessToken().catch(() => {
+      // Clear the browser session even if the network is unavailable.
+    });
 
     clearSession();
   }, [clearSession]);
