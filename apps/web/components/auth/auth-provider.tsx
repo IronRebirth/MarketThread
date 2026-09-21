@@ -105,10 +105,8 @@ export function AuthProvider({
 
   const handleLogin = useCallback(
     async (payload: LoginRequest): Promise<User> => {
-      await login(payload);
-
       try {
-        const nextUser = await getCurrentUser();
+        const nextUser = await login(payload);
 
         setUser(nextUser);
 
