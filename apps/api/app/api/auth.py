@@ -18,7 +18,7 @@ from app.core.security import (
 )
 from app.db.models.user import User
 from app.db.session import get_db_session
-from app.schemas.auth import LoginRequest, TokenResponse, UserCreate, UserRead
+from app.schemas.auth import LoginRequest, UserCreate, UserRead
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -164,12 +164,12 @@ async def register(
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=UserRead)
 async def login(
     payload: LoginRequest,
     response: Response,
     session: DatabaseSession,
-) -> TokenResponse:
+) -> User:
     """Authenticate a user and establish a secure browser session."""
 
     user = await get_user_by_email(payload.email.lower(), session)
@@ -207,10 +207,7 @@ async def login(
         path="/",
     )
 
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-    )
+    return user
 
 
 @router.post(
