@@ -92,10 +92,9 @@ async def test_login_returns_access_token(
 
     body = response.json()
 
-    assert body["token_type"] == "bearer"
-    assert isinstance(body["access_token"], str)
-    assert body["access_token"]
-    assert response.cookies.get("marketthread.access") == body["access_token"]
+    assert body["email"] == TEST_EMAIL
+    assert body["is_active"] is True
+    assert response.cookies.get("marketthread.access")
     assert "HttpOnly" in response.headers["set-cookie"]
     assert "SameSite=lax" in response.headers["set-cookie"]
 
@@ -202,19 +201,13 @@ async def test_logout_invalidates_existing_access_token(
             "password": TEST_PASSWORD,
         },
     )
-    token = login_response.json()["access_token"]
+    assert login_response.cookies.get("marketthread.access")
 
-    logout_response = await client.post(
-        "/auth/logout",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    logout_response = await client.post("/auth/logout")
 
     assert logout_response.status_code == 204
 
-    me_response = await client.get(
-        "/auth/me",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    me_response = await client.get("/auth/me")
 
     assert me_response.status_code == 401
 
@@ -239,7 +232,8 @@ async def test_access_token_contains_required_claims(
         },
     )
 
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("marketthread.access")
+    assert token
 
     from app.core.security import decode_access_token
 
