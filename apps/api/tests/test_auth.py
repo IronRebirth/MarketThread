@@ -95,6 +95,9 @@ async def test_login_returns_access_token(
     assert body["token_type"] == "bearer"
     assert isinstance(body["access_token"], str)
     assert body["access_token"]
+    assert response.cookies.get("marketthread.access") == body["access_token"]
+    assert "HttpOnly" in response.headers["set-cookie"]
+    assert "SameSite=lax" in response.headers["set-cookie"]
 
 
 @pytest.mark.asyncio
@@ -248,3 +251,103 @@ async def test_access_token_contains_required_claims(
     assert isinstance(payload["exp"], int)
     assert payload["exp"] > payload["iat"]
     assert payload["sv"] == 0
+
+
+@pytest.mark.asyncio
+async def test_cookie_authentication_works_without_bearer_header(
+    client: AsyncClient,
+) -> None:
+    await client.post(
+        "/auth/register",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    login_response = await client.post(
+        "/auth/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    assert login_response.status_code == 200
+    client.cookies.set(
+        "marketthread.access",
+        login_response.cookies["marketthread.access"],
+    )
+
+    response = await client.get("/auth/me")
+
+    assert response.status_code == 200
+    assert response.json()["email"] == TEST_EMAIL
+
+
+@pytest.mark.asyncio
+async def test_cookie_logout_clears_cookie_and_invalidates_session(
+    client: AsyncClient,
+) -> None:
+    await client.post(
+        "/auth/register",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    login_response = await client.post(
+        "/auth/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    client.cookies.set(
+        "marketthread.access",
+        login_response.cookies["marketthread.access"],
+    )
+
+    logout_response = await client.post("/auth/logout")
+
+    assert logout_response.status_code == 204
+    assert "marketthread.access=" in logout_response.headers["set-cookie"]
+
+    me_response = await client.get("/auth/me")
+
+    assert me_response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_cookie_auth_rejects_untrusted_cross_origin_mutation(
+    client: AsyncClient,
+) -> None:
+    await client.post(
+        "/auth/register",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    login_response = await client.post(
+        "/auth/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    client.cookies.set(
+        "marketthread.access",
+        login_response.cookies["marketthread.access"],
+    )
+
+    response = await client.post(
+        "/auth/logout",
+        headers={"Origin": "https://attacker.example"},
+    )
+
+    assert response.status_code == 403
