@@ -1,5 +1,10 @@
-from fastapi import FastAPI
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.api import router as admin_router
 from app.api.auth import router as auth_router
@@ -7,6 +12,7 @@ from app.api.market_data import router as market_data_router
 from app.backtesting.api import router as backtesting_router
 from app.company_impact.api import router as company_impact_router
 from app.core.config import get_settings
+from app.db.session import get_db_session
 from app.events.api import router as events_router
 from app.market_impact.api import router as market_impact_router
 from app.model_monitoring.api import router as model_monitoring_router
@@ -113,6 +119,16 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/ready", tags=["system"])
-async def readiness() -> dict[str, str]:
-    """Return the readiness status of the API."""
+async def readiness(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, str]:
+    """Return readiness only when the application database is reachable."""
+    try:
+        await session.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is not ready.",
+        ) from exc
+
     return {"status": "ready"}
